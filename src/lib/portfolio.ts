@@ -56,6 +56,8 @@ export interface Holding {
   totalSold: number;
   /** Sum of all fees recorded for this symbol. */
   totalFees: number;
+  /** Shares sold beyond what was held at the time. Ignored in the P&L; non-zero means bad data. */
+  unmatchedSellQuantity: number;
   transactionCount: number;
   firstDate: string;
   lastDate: string;
@@ -113,11 +115,15 @@ export function makeTransaction(input: TransactionInput, id?: string): Transacti
   };
 }
 
-/** Sort transactions oldest-first (stable, so same-day entries keep their order). */
+/**
+ * Sort transactions oldest-first. On the same day buys come before sells, so a
+ * same-day round trip nets out regardless of entry order; otherwise the sort is stable.
+ */
 export function sortByDate(transactions: Transaction[]): Transaction[] {
   return [...transactions].sort((a, b) => {
-    if (a.date === b.date) return 0;
-    return a.date < b.date ? -1 : 1;
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    if (a.type === b.type) return 0;
+    return a.type === 'buy' ? -1 : 1;
   });
 }
 
@@ -126,6 +132,8 @@ export function sortByDate(transactions: Transaction[]): Transaction[] {
  *
  * Buys increase the cost basis (including fees). Sells realize profit/loss
  * against the running average cost and reduce the basis proportionally.
+ * Only the part of a sell covered by shares held counts; any excess (and its
+ * share of the fees) is recorded in `unmatchedSellQuantity` and otherwise ignored.
  */
 export function computePortfolio(transactions: Transaction[]): PortfolioSummary {
   const map = new Map<string, Holding>();
@@ -146,6 +154,7 @@ export function computePortfolio(transactions: Transaction[]): PortfolioSummary 
         totalBought: 0,
         totalSold: 0,
         totalFees: 0,
+        unmatchedSellQuantity: 0,
         transactionCount: 0,
         firstDate: tx.date,
         lastDate: tx.date,
@@ -166,14 +175,17 @@ export function computePortfolio(transactions: Transaction[]): PortfolioSummary 
       holding.costBasis += gross + tx.fees;
       holding.totalBought += gross + tx.fees;
     } else {
-      const averageCost = holding.quantity > 0 ? holding.costBasis / holding.quantity : 0;
-      const soldQuantity = Math.min(tx.quantity, holding.quantity);
+      const held = holding.quantity > EPSILON ? holding.quantity : 0;
+      const averageCost = held > 0 ? holding.costBasis / held : 0;
+      const soldQuantity = Math.min(tx.quantity, held);
+      const matchedShare = tx.quantity > 0 ? soldQuantity / tx.quantity : 0;
       const costOfSold = averageCost * soldQuantity;
-      const proceeds = gross - tx.fees;
+      const proceeds = (gross - tx.fees) * matchedShare;
       holding.realizedPnl += proceeds - costOfSold;
-      holding.quantity = Math.max(0, holding.quantity - tx.quantity);
-      holding.costBasis = Math.max(0, holding.costBasis - costOfSold);
+      holding.quantity = Math.max(0, held - soldQuantity);
+      holding.costBasis = holding.quantity > EPSILON ? Math.max(0, holding.costBasis - costOfSold) : 0;
       holding.totalSold += proceeds;
+      if (tx.quantity - soldQuantity > EPSILON) holding.unmatchedSellQuantity += tx.quantity - soldQuantity;
     }
 
     holding.averageCost = holding.quantity > EPSILON ? holding.costBasis / holding.quantity : 0;
@@ -197,6 +209,14 @@ export function computePortfolio(transactions: Transaction[]): PortfolioSummary 
     transactionCount: transactions.length,
     symbols,
   };
+}
+
+/** Symbols where at least one sell exceeds the shares held at the time, sorted alphabetically. */
+export function oversoldSymbols(transactions: Transaction[]): string[] {
+  return computePortfolio(transactions)
+    .holdings.filter((holding) => holding.unmatchedSellQuantity > 0)
+    .map((holding) => holding.symbol)
+    .sort();
 }
 
 /** Format a number as currency, degrading gracefully for unsupported codes. */
