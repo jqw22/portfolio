@@ -1,9 +1,10 @@
-import { Banknote, Landmark, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { Banknote, ChartLine, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import type { ComponentType } from 'react';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { formatCurrency, type PortfolioSummary } from '@/lib/portfolio';
+import { totalUnrealised, type ResolvedPrice } from '@/lib/prices';
 
 interface SummaryCardsProps {
   portfolio: PortfolioSummary;
@@ -12,6 +13,8 @@ interface SummaryCardsProps {
   /** Number of accounts holding cash entries. */
   cashAccounts: number;
   currency: string;
+  /** Latest prices by symbol, in the ledger currency. */
+  prices: Record<string, ResolvedPrice | null>;
 }
 
 interface SummaryItem {
@@ -27,7 +30,28 @@ function pluralize(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
 
-export function SummaryCards({ portfolio, cashTotal, cashAccounts, currency }: SummaryCardsProps) {
+/** Open holdings at their latest price; holdings without one count at cost. */
+function currentValue(portfolio: PortfolioSummary, prices: Record<string, ResolvedPrice | null>) {
+  const total = totalUnrealised(portfolio.openHoldings, prices);
+  return {
+    value: total.marketValue + (portfolio.totalCostBasis - total.costBasis),
+    gain: total.gain,
+    priced: total.priced,
+    missing: total.missing,
+  };
+}
+
+export function SummaryCards({ portfolio, cashTotal, cashAccounts, currency, prices }: SummaryCardsProps) {
+  const current = currentValue(portfolio, prices);
+  const gainSign = current.gain > 0 ? '+' : '';
+  const currentHint =
+    current.priced === 0
+      ? current.missing > 0
+        ? 'No prices yet, shown at cost'
+        : 'No open positions'
+      : current.missing > 0
+        ? `${pluralize(current.missing, 'position')} without a price, at cost`
+        : `${gainSign}${formatCurrency(current.gain, currency)} unrealised`;
   const realizedPositive = portfolio.totalRealizedPnl >= 0;
   const RealizedIcon = realizedPositive ? TrendingUp : TrendingDown;
 
@@ -40,10 +64,10 @@ export function SummaryCards({ portfolio, cashTotal, cashAccounts, currency }: S
       iconClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
     },
     {
-      label: 'Total invested',
-      value: formatCurrency(portfolio.totalInvested, currency),
-      hint: `${formatCurrency(portfolio.totalFees, currency)} paid in fees`,
-      icon: Landmark,
+      label: 'Current value',
+      value: formatCurrency(current.value, currency),
+      hint: currentHint,
+      icon: ChartLine,
       iconClass: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
     },
     {

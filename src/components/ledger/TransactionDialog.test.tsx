@@ -43,6 +43,7 @@ function fillTrade(type: 'Buy' | 'Sell', quantity: string, price = '120') {
   fireEvent.click(screen.getByRole('button', { name: type }));
   chooseAccount();
   fireEvent.change(screen.getByLabelText('Symbol'), { target: { value: 'AAPL' } });
+  fireEvent.change(screen.getByLabelText('Stock name'), { target: { value: 'Apple Inc.' } });
   fireEvent.change(screen.getByLabelText('Trade date'), { target: { value: '2024-02-01' } });
   fireEvent.change(screen.getByLabelText('Quantity'), { target: { value: quantity } });
   fireEvent.change(screen.getByLabelText(/Price/), { target: { value: price } });

@@ -367,6 +367,7 @@ export default function Index() {
                 cashTotal={cashTotal}
                 cashAccounts={cashBalances.length}
                 currency={currency}
+                prices={prices}
               />
 
               <Tabs defaultValue="holdings" className="min-w-0">
