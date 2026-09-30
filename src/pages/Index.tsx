@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useSeoMeta } from '@unhead/react';
-import { Plus, RefreshCw, Wallet } from 'lucide-react';
+import { LineChart, Plus, RefreshCw, Wallet } from 'lucide-react';
 
 import { LoginArea } from '@/components/auth/LoginArea';
 import { AccountsDialog } from '@/components/ledger/AccountsDialog';
@@ -8,6 +8,7 @@ import { AppHeader } from '@/components/ledger/AppHeader';
 import { DataMenu } from '@/components/ledger/DataMenu';
 import { EmptyState } from '@/components/ledger/EmptyState';
 import { HoldingsTable } from '@/components/ledger/HoldingsTable';
+import { PricesDialog } from '@/components/ledger/PricesDialog';
 import { SummaryCards } from '@/components/ledger/SummaryCards';
 import { TransactionDialog } from '@/components/ledger/TransactionDialog';
 import { TransactionsTable } from '@/components/ledger/TransactionsTable';
@@ -15,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { usePrices } from '@/hooks/usePrices';
 import { useStockTransactions } from '@/hooks/useStockTransactions';
 import { useToast } from '@/hooks/useToast';
 import { cashBalanceList, newCashShortfalls } from '@/lib/cash';
@@ -96,6 +98,7 @@ export default function Index() {
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [editingCash, setEditingCash] = useState<CashMovement | null>(null);
   const [accountsOpen, setAccountsOpen] = useState(false);
+  const [pricesOpen, setPricesOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const portfolio = useMemo(() => computePortfolio(transactions), [transactions]);
@@ -104,6 +107,47 @@ export default function Index() {
     [transactions, cash, accounts],
   );
   const cashTotal = cashBalances.reduce((sum, balance) => sum + balance.balance, 0);
+  const openSymbols = useMemo(
+    () => Array.from(new Set(portfolio.openHoldings.map((holding) => holding.symbol))).sort(),
+    [portfolio.openHoldings],
+  );
+  const {
+    prices,
+    settings: priceSettings,
+    setSettings: setPriceSettings,
+    quotes,
+    lastRefreshAt,
+    hasKey,
+    isRefreshing,
+    refresh: refreshPrices,
+  } = usePrices(openSymbols, currency);
+
+  const handleRefreshPrices = async () => {
+    const result = await refreshPrices();
+    const problems: string[] = [];
+    if (result.rateLimited) problems.push('The price source limit was reached; try again later.');
+    if (result.failed.length > 0 && !result.rateLimited) {
+      problems.push(`No price for ${result.failed.map((failure) => failure.symbol).join(', ')}.`);
+    }
+    if (result.needKey.length > 0) problems.push('Add an API key in Prices, or enter prices by hand.');
+    if (result.fxFailed) problems.push('Exchange rates could not be updated.');
+    toast({
+      title: result.updated > 0 ? `Updated ${result.updated} price${result.updated === 1 ? '' : 's'}` : 'No prices updated',
+      description: problems.length > 0 ? problems.join(' ') : undefined,
+      variant: result.updated === 0 && problems.length > 0 ? 'destructive' : undefined,
+    });
+  };
+
+  const handleSavePrices = (next: typeof priceSettings) => {
+    const keysChanged =
+      next.alphaVantageKey !== priceSettings.alphaVantageKey || next.finnhubKey !== priceSettings.finnhubKey;
+    setPriceSettings(next);
+    toast({
+      title: 'Price settings saved',
+      description:
+        keysChanged && (next.alphaVantageKey || next.finnhubKey) ? 'Press Refresh prices to fetch with your key.' : undefined,
+    });
+  };
 
   const openAdd = () => {
     setEditing(null);
@@ -292,6 +336,35 @@ export default function Index() {
                     title="Open positions"
                     description="Cost basis and realized P&L are calculated with the average-cost method. Cash is what each account holds after deposits, withdrawals, buys and sells."
                     cashBalances={cashBalances}
+                    prices={prices}
+                    actions={
+                      <>
+                        {lastRefreshAt > 0 ? (
+                          <span className="text-xs text-muted-foreground" title={new Date(lastRefreshAt).toLocaleString()}>
+                            Prices fetched{' '}
+                            {new Date(lastRefreshAt).toLocaleString(undefined, {
+                              day: 'numeric',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        ) : null}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={hasKey ? handleRefreshPrices : () => setPricesOpen(true)}
+                          disabled={isRefreshing}
+                        >
+                          <RefreshCw className={isRefreshing ? 'animate-spin' : undefined} />
+                          {hasKey ? 'Refresh prices' : 'Set up prices'}
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => setPricesOpen(true)} aria-label="Price settings">
+                          <LineChart />
+                          Prices
+                        </Button>
+                      </>
+                    }
                     showFooter
                   />
                   {portfolio.closedHoldings.length > 0 ? (
@@ -339,6 +412,15 @@ export default function Index() {
         onSubmit={handleSubmit}
         onSubmitCash={handleSubmitCash}
         onManageAccounts={() => setAccountsOpen(true)}
+      />
+
+      <PricesDialog
+        open={pricesOpen}
+        onOpenChange={setPricesOpen}
+        symbols={openSymbols}
+        settings={priceSettings}
+        quotes={quotes}
+        onSave={handleSavePrices}
       />
 
       <AccountsDialog
