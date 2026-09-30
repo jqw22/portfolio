@@ -26,6 +26,8 @@ export interface Transaction {
   /** Commission or other fees paid for this trade. */
   fees: number;
   notes?: string;
+  /** Optional user-defined label, one of the ledger's `labels`. */
+  label?: string;
 }
 
 /** The user-editable subset of a transaction (no `id`). */
@@ -38,6 +40,14 @@ export interface TransactionInput {
   price: number;
   fees?: number;
   notes?: string;
+  label?: string;
+}
+
+/** Everything that is stored: the trades plus the user's list of labels. */
+export interface Ledger {
+  transactions: Transaction[];
+  /** User-defined labels, in the order they were created. */
+  labels: string[];
 }
 
 /** Aggregated position for a single symbol, computed with the average-cost method. */
@@ -63,6 +73,8 @@ export interface Holding {
   transactionCount: number;
   firstDate: string;
   lastDate: string;
+  /** Distinct labels used by this symbol's transactions, sorted alphabetically. */
+  labels: string[];
 }
 
 export interface PortfolioSummary {
@@ -104,6 +116,7 @@ export function newId(): string {
 export function makeTransaction(input: TransactionInput, id?: string): Transaction {
   const name = input.name?.trim();
   const notes = input.notes?.trim();
+  const label = normalizeLabel(input.label);
   return {
     id: id ?? newId(),
     symbol: input.symbol.trim().toUpperCase(),
@@ -114,6 +127,46 @@ export function makeTransaction(input: TransactionInput, id?: string): Transacti
     price: input.price,
     fees: Number.isFinite(input.fees) ? (input.fees as number) : 0,
     notes: notes ? notes : undefined,
+    label,
+  };
+}
+
+/** Trim and collapse whitespace in a label, returning `undefined` when empty. */
+export function normalizeLabel(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const label = value.trim().replace(/\s+/g, ' ').slice(0, 64);
+  return label ? label : undefined;
+}
+
+/** Find an existing label that matches case-insensitively. */
+export function findLabel(labels: string[], value: string): string | undefined {
+  const needle = value.trim().toLowerCase();
+  return labels.find((label) => label.toLowerCase() === needle);
+}
+
+/**
+ * Merge label lists, dropping blanks and case-insensitive duplicates while
+ * keeping the first spelling and order seen.
+ */
+export function mergeLabels(...lists: (readonly unknown[])[]): string[] {
+  const result: string[] = [];
+  for (const list of lists) {
+    for (const value of list) {
+      const label = normalizeLabel(value);
+      if (label && !findLabel(result, label)) result.push(label);
+    }
+  }
+  return result;
+}
+
+/** Remove a label from the list and clear it from every transaction that used it. */
+export function removeLabel(ledger: Ledger, label: string): Ledger {
+  const target = label.toLowerCase();
+  return {
+    labels: ledger.labels.filter((existing) => existing.toLowerCase() !== target),
+    transactions: ledger.transactions.map((tx) =>
+      tx.label && tx.label.toLowerCase() === target ? { ...tx, label: undefined } : tx,
+    ),
   };
 }
 
@@ -160,11 +213,13 @@ export function computePortfolio(transactions: Transaction[]): PortfolioSummary 
         transactionCount: 0,
         firstDate: tx.date,
         lastDate: tx.date,
+        labels: [],
       };
       map.set(symbol, holding);
     }
 
     if (!holding.name && tx.name) holding.name = tx.name;
+    if (tx.label && !holding.labels.includes(tx.label)) holding.labels.push(tx.label);
     holding.transactionCount += 1;
     holding.totalFees += tx.fees;
     if (tx.date < holding.firstDate) holding.firstDate = tx.date;
@@ -192,6 +247,8 @@ export function computePortfolio(transactions: Transaction[]): PortfolioSummary 
 
     holding.averageCost = holding.quantity > EPSILON ? holding.costBasis / holding.quantity : 0;
   }
+
+  for (const holding of map.values()) holding.labels.sort((a, b) => a.localeCompare(b));
 
   const holdings = Array.from(map.values()).sort((a, b) => b.costBasis - a.costBasis);
   const openHoldings = holdings.filter((holding) => holding.quantity > EPSILON);
@@ -340,8 +397,29 @@ export function parseTransactions(value: unknown): Transaction[] {
       price,
       fees: Number.isFinite(fees) ? fees : 0,
       notes: typeof record.notes === 'string' && record.notes.trim() ? record.notes.trim() : undefined,
+      label: normalizeLabel(record.label),
     });
   }
 
   return result;
+}
+
+/**
+ * Coerce a stored payload into a `Ledger`. Accepts the current
+ * `{ transactions, labels }` object as well as the original bare transaction
+ * array. Labels used by transactions but missing from the list are added.
+ */
+export function parseLedger(value: unknown): Ledger {
+  let rawTransactions: unknown = value;
+  let rawLabels: unknown = [];
+  if (!Array.isArray(value) && typeof value === 'object' && value !== null) {
+    const record = value as Record<string, unknown>;
+    rawTransactions = record.transactions;
+    rawLabels = record.labels;
+  }
+  const parsed = parseTransactions(rawTransactions);
+  const labels = mergeLabels(Array.isArray(rawLabels) ? rawLabels : [], parsed.map((tx) => tx.label));
+  // Snap each transaction's label to the list's spelling.
+  const transactions = parsed.map((tx) => (tx.label ? { ...tx, label: findLabel(labels, tx.label) } : tx));
+  return { transactions, labels };
 }

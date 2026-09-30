@@ -21,7 +21,17 @@ import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-q
 import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { useToast } from './useToast';
-import { makeTransaction, parseTransactions, type Transaction, type TransactionInput } from '@/lib/portfolio';
+import {
+  findLabel,
+  makeTransaction,
+  mergeLabels,
+  normalizeLabel,
+  parseLedger,
+  removeLabel,
+  type Ledger,
+  type Transaction,
+  type TransactionInput,
+} from '@/lib/portfolio';
 
 /** NIP-78 application-specific data (addressable/replaceable). */
 export const LEDGER_KIND = 30078;
@@ -29,13 +39,18 @@ export const LEDGER_KIND = 30078;
 export const LEDGER_D_TAG = 'stock-ledger';
 
 const CACHE_PREFIX = 'stock-ledger:cache:';
-const CACHE_VERSION = 1;
+/** Version 1 caches held transactions only; version 2 adds labels. Both are readable. */
+const CACHE_VERSION = 2;
+/** Version of the decrypted relay payload (see NIP.md). */
+const PAYLOAD_VERSION = 2;
+
+const EMPTY_LEDGER: Ledger = { transactions: [], labels: [] };
 
 interface LedgerCache {
   version: number;
   /** Epoch milliseconds of the last local write. */
   updatedAt: number;
-  transactions: Transaction[];
+  ledger: Ledger;
 }
 
 function cacheKey(pubkey?: string): string {
@@ -49,18 +64,18 @@ function readCache(pubkey?: string): LedgerCache | null {
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return null;
     const record = parsed as Record<string, unknown>;
-    if (record.version !== CACHE_VERSION) return null;
+    if (record.version !== 1 && record.version !== CACHE_VERSION) return null;
     const updatedAt = typeof record.updatedAt === 'number' ? record.updatedAt : 0;
-    return { version: CACHE_VERSION, updatedAt, transactions: parseTransactions(record.transactions) };
+    return { version: CACHE_VERSION, updatedAt, ledger: parseLedger(record) };
   } catch (error) {
     console.warn('Failed to read cached ledger:', error);
     return null;
   }
 }
 
-function writeCache(pubkey: string | undefined, transactions: Transaction[], updatedAt: number): void {
+function writeCache(pubkey: string | undefined, ledger: Ledger, updatedAt: number): void {
   try {
-    const payload: LedgerCache = { version: CACHE_VERSION, updatedAt, transactions };
+    const payload = { version: CACHE_VERSION, updatedAt, ...ledger };
     localStorage.setItem(cacheKey(pubkey), JSON.stringify(payload));
   } catch (error) {
     console.warn('Failed to cache ledger:', error);
@@ -69,6 +84,8 @@ function writeCache(pubkey: string | undefined, transactions: Transaction[], upd
 
 export interface StockTransactions {
   transactions: Transaction[];
+  /** The user's labels, in creation order. */
+  labels: string[];
   isLoading: boolean;
   isSyncing: boolean;
   isLoggedIn: boolean;
@@ -81,8 +98,12 @@ export interface StockTransactions {
   deleteTransaction: (id: string) => void;
   replaceTransactions: (transactions: Transaction[]) => void;
   clearTransactions: () => void;
+  /** Add a label (no-op if it already exists) and return its stored spelling. */
+  addLabel: (label: string) => string | undefined;
+  /** Delete a label and clear it from every transaction that uses it. */
+  deleteLabel: (label: string) => void;
   /** The raw query, exposed for advanced callers. */
-  query: UseQueryResult<Transaction[], Error>;
+  query: UseQueryResult<Ledger, Error>;
 }
 
 export function useStockTransactions(): StockTransactions {
@@ -104,13 +125,14 @@ export function useStockTransactions(): StockTransactions {
   const [isSyncing, setIsSyncing] = useState(false);
 
   const publishLedger = useCallback(
-    async (transactions: Transaction[]): Promise<void> => {
+    async (ledger: Ledger): Promise<void> => {
       if (!user) return;
       const nip44 = user.signer.nip44;
       if (!nip44) {
         throw new Error('Your signer does not support NIP-44 encryption, so the ledger cannot be synced.');
       }
-      const ciphertext = await nip44.encrypt(user.pubkey, JSON.stringify(transactions));
+      const payload = { version: PAYLOAD_VERSION, transactions: ledger.transactions, labels: ledger.labels };
+      const ciphertext = await nip44.encrypt(user.pubkey, JSON.stringify(payload));
       const now = Math.floor(Date.now() / 1000);
       const createdAt = Math.max(now, lastCreatedAtRef.current + 1);
       const event = await publish({
@@ -123,18 +145,18 @@ export function useStockTransactions(): StockTransactions {
         created_at: createdAt,
       });
       lastCreatedAtRef.current = event.created_at;
-      writeCache(user.pubkey, transactions, event.created_at * 1000);
+      writeCache(user.pubkey, ledger, event.created_at * 1000);
     },
     [publish, user],
   );
 
   const enqueuePublish = useCallback(
-    (transactions: Transaction[]): void => {
+    (ledger: Ledger): void => {
       if (!user) return;
       pendingRef.current += 1;
       setIsSyncing(true);
       chainRef.current = chainRef.current
-        .then(() => publishLedger(transactions))
+        .then(() => publishLedger(ledger))
         .catch((error: unknown) => {
           console.error('Failed to sync ledger:', error);
           toast({
@@ -154,18 +176,18 @@ export function useStockTransactions(): StockTransactions {
     [publishLedger, toast, user],
   );
 
-  const query = useQuery<Transaction[], Error>({
+  const query = useQuery<Ledger, Error>({
     queryKey,
     queryFn: async (context) => {
       const initial = readCache(pubkey);
 
       if (!user) {
-        return initial?.transactions ?? [];
+        return initial?.ledger ?? EMPTY_LEDGER;
       }
 
       const nip44 = user.signer.nip44;
       if (!nip44) {
-        return initial?.transactions ?? [];
+        return initial?.ledger ?? EMPTY_LEDGER;
       }
 
       try {
@@ -183,39 +205,52 @@ export function useStockTransactions(): StockTransactions {
 
         if (event && remoteUpdatedAt >= localUpdatedAt) {
           const plaintext = await nip44.decrypt(user.pubkey, event.content);
-          const transactions = parseTransactions(JSON.parse(plaintext));
+          const ledger = parseLedger(JSON.parse(plaintext));
           lastCreatedAtRef.current = Math.max(lastCreatedAtRef.current, event.created_at);
           // Another edit could have landed during decryption — prefer it.
           const latest = readCache(pubkey);
           if (latest && latest.updatedAt > remoteUpdatedAt) {
-            return latest.transactions;
+            return latest.ledger;
           }
-          writeCache(pubkey, transactions, remoteUpdatedAt);
-          return transactions;
+          writeCache(pubkey, ledger, remoteUpdatedAt);
+          return ledger;
         }
 
         // Local edits are newer than the relay copy — push them back up.
-        if (local && localUpdatedAt > remoteUpdatedAt && local.transactions.length > 0) {
-          enqueuePublish(local.transactions);
+        if (
+          local &&
+          localUpdatedAt > remoteUpdatedAt &&
+          (local.ledger.transactions.length > 0 || local.ledger.labels.length > 0)
+        ) {
+          enqueuePublish(local.ledger);
         }
 
-        return local?.transactions ?? [];
+        return local?.ledger ?? EMPTY_LEDGER;
       } catch (error) {
         console.warn('Failed to load ledger from relays, using local copy:', error);
-        return readCache(pubkey)?.transactions ?? initial?.transactions ?? [];
+        return readCache(pubkey)?.ledger ?? initial?.ledger ?? EMPTY_LEDGER;
       }
     },
   });
 
-  const commit = useCallback(
-    (updater: (previous: Transaction[]) => Transaction[]) => {
-      const previous = queryClient.getQueryData<Transaction[]>(queryKey) ?? [];
-      const next = updater(previous);
-      queryClient.setQueryData<Transaction[]>(queryKey, next);
+  const commitLedger = useCallback(
+    (updater: (previous: Ledger) => Ledger) => {
+      const previous = queryClient.getQueryData<Ledger>(queryKey) ?? EMPTY_LEDGER;
+      const updated = updater(previous);
+      // Any label a transaction carries must also be in the list.
+      const next = parseLedger(updated);
+      queryClient.setQueryData<Ledger>(queryKey, next);
       writeCache(pubkey, next, Date.now());
       enqueuePublish(next);
     },
     [enqueuePublish, pubkey, queryClient, queryKey],
+  );
+
+  const commit = useCallback(
+    (updater: (previous: Transaction[]) => Transaction[]) => {
+      commitLedger((previous) => ({ ...previous, transactions: updater(previous.transactions) }));
+    },
+    [commitLedger],
   );
 
   const addTransaction = useCallback(
@@ -252,12 +287,33 @@ export function useStockTransactions(): StockTransactions {
     commit(() => []);
   }, [commit]);
 
+  const addLabel = useCallback(
+    (value: string): string | undefined => {
+      const label = normalizeLabel(value);
+      if (!label) return undefined;
+      const current = queryClient.getQueryData<Ledger>(queryKey) ?? EMPTY_LEDGER;
+      const existing = findLabel(current.labels, label);
+      if (existing) return existing;
+      commitLedger((previous) => ({ ...previous, labels: mergeLabels(previous.labels, [label]) }));
+      return label;
+    },
+    [commitLedger, queryClient, queryKey],
+  );
+
+  const deleteLabel = useCallback(
+    (label: string) => {
+      commitLedger((previous) => removeLabel(previous, label));
+    },
+    [commitLedger],
+  );
+
   const refresh = useCallback(() => {
     void query.refetch();
   }, [query]);
 
   return {
-    transactions: query.data ?? [],
+    transactions: query.data?.transactions ?? EMPTY_LEDGER.transactions,
+    labels: query.data?.labels ?? EMPTY_LEDGER.labels,
     isLoading: query.isLoading,
     isSyncing,
     isLoggedIn: Boolean(user),
@@ -269,6 +325,8 @@ export function useStockTransactions(): StockTransactions {
     deleteTransaction,
     replaceTransactions,
     clearTransactions,
+    addLabel,
+    deleteLabel,
     query,
   };
 }

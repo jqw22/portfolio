@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { LabelPicker } from '@/components/ledger/LabelPicker';
 import { cn } from '@/lib/utils';
 import {
   formatCurrency,
@@ -31,6 +32,9 @@ interface TransactionDialogProps {
   transactions: Transaction[];
   symbols: string[];
   currency: string;
+  labels: string[];
+  onCreateLabel: (label: string) => string | undefined;
+  onDeleteLabel: (label: string) => void;
   onSubmit: (input: TransactionInput) => void;
 }
 
@@ -43,6 +47,7 @@ interface FormState {
   price: string;
   fees: string;
   notes: string;
+  label: string | undefined;
 }
 
 type FormErrors = Partial<Record<keyof FormState, string>>;
@@ -57,6 +62,7 @@ function initialForm(transaction: Transaction | null): FormState {
     price: transaction ? String(transaction.price) : '',
     fees: transaction && transaction.fees ? String(transaction.fees) : '',
     notes: transaction?.notes ?? '',
+    label: transaction?.label,
   };
 }
 
@@ -67,6 +73,9 @@ export function TransactionDialog({
   transactions,
   symbols,
   currency,
+  labels,
+  onCreateLabel,
+  onDeleteLabel,
   onSubmit,
 }: TransactionDialogProps) {
   return (
@@ -82,6 +91,9 @@ export function TransactionDialog({
           transactions={transactions}
           symbols={symbols}
           currency={currency}
+          labels={labels}
+          onCreateLabel={onCreateLabel}
+          onDeleteLabel={onDeleteLabel}
           onCancel={() => onOpenChange(false)}
           onSubmit={onSubmit}
         />
@@ -95,11 +107,24 @@ interface TransactionFormProps {
   transactions: Transaction[];
   symbols: string[];
   currency: string;
+  labels: string[];
+  onCreateLabel: (label: string) => string | undefined;
+  onDeleteLabel: (label: string) => void;
   onCancel: () => void;
   onSubmit: (input: TransactionInput) => void;
 }
 
-function TransactionForm({ transaction, transactions, symbols, currency, onCancel, onSubmit }: TransactionFormProps) {
+function TransactionForm({
+  transaction,
+  transactions,
+  symbols,
+  currency,
+  labels,
+  onCreateLabel,
+  onDeleteLabel,
+  onCancel,
+  onSubmit,
+}: TransactionFormProps) {
   const [form, setForm] = useState<FormState>(() => initialForm(transaction));
   const [errors, setErrors] = useState<FormErrors>({});
 
@@ -112,6 +137,11 @@ function TransactionForm({ transaction, transactions, symbols, currency, onCance
   const feesValue = form.fees.trim() === '' ? 0 : parseNumber(form.fees);
   const gross = quantityValue !== null && priceValue !== null ? quantityValue * priceValue : 0;
   const total = gross + (feesValue ?? 0);
+
+  const labelUsage: Record<string, number> = {};
+  for (const tx of transactions) {
+    if (tx.label) labelUsage[tx.label] = (labelUsage[tx.label] ?? 0) + 1;
+  }
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -141,6 +171,7 @@ function TransactionForm({ transaction, transactions, symbols, currency, onCance
       price: priceValue ?? 0,
       fees: feesValue ?? 0,
       notes: form.notes,
+      label: form.label,
     };
 
     // Only block oversells this change introduces, so existing bad data doesn't lock the form.
@@ -284,6 +315,21 @@ function TransactionForm({ transaction, transactions, symbols, currency, onCance
           />
           {errors.fees ? <p className="text-xs text-destructive">{errors.fees}</p> : null}
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="tx-label">
+          Label <span className="font-normal text-muted-foreground">(optional)</span>
+        </Label>
+        <LabelPicker
+          id="tx-label"
+          value={form.label}
+          labels={labels}
+          usage={labelUsage}
+          onChange={(label) => updateForm({ label })}
+          onCreate={onCreateLabel}
+          onDelete={onDeleteLabel}
+        />
       </div>
 
       <div className="space-y-2">

@@ -66,6 +66,9 @@ export default function Index() {
     deleteTransaction,
     replaceTransactions,
     clearTransactions,
+    labels,
+    addLabel,
+    deleteLabel,
     refresh,
   } = useStockTransactions();
   const { toast } = useToast();
@@ -229,6 +232,7 @@ export default function Index() {
                 <TabsContent value="transactions" className="mt-4">
                   <TransactionsTable
                     transactions={transactions}
+                    labels={labels}
                     currency={currency}
                     onEdit={openEdit}
                     onDelete={handleDelete}
@@ -248,6 +252,9 @@ export default function Index() {
         transactions={transactions}
         symbols={portfolio.symbols}
         currency={currency}
+        labels={labels}
+        onCreateLabel={addLabel}
+        onDeleteLabel={deleteLabel}
         onSubmit={handleSubmit}
       />
     </div>
