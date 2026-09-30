@@ -6,6 +6,8 @@ import { defineConfig } from "vitest/config";
 
 // https://vitejs.dev/config/
 export default defineConfig(() => ({
+  // GitHub Pages serves this project site from /portfolio/
+  base: "/portfolio/",
   server: {
     host: "::",
     port: 8080,
