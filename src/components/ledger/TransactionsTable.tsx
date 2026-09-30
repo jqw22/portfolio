@@ -76,12 +76,10 @@ export function TransactionsTable({ transactions, currency, onEdit, onDelete }: 
     return [...filtered].sort((a, b) => {
       const left = sortValue(a, sortKey);
       const right = sortValue(b, sortKey);
-      let comparison = 0;
-      if (typeof left === 'number' && typeof right === 'number') {
-        comparison = left - right;
-      } else {
-        comparison = String(left).localeCompare(String(right));
-      }
+      const comparison =
+        typeof left === 'number' && typeof right === 'number'
+          ? left - right
+          : String(left).localeCompare(String(right));
       return sortDir === 'asc' ? comparison : -comparison;
     });
   }, [transactions, search, typeFilter, sortKey, sortDir]);
