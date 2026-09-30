@@ -11,13 +11,17 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { findLabel, normalizeLabel, type Transaction } from '@/lib/portfolio';
+import { computeCashBalances } from '@/lib/cash';
+import { cn } from '@/lib/utils';
+import { findLabel, formatCurrency, normalizeLabel, type CashMovement, type Transaction } from '@/lib/portfolio';
 
 interface AccountsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   accounts: string[];
   transactions: Transaction[];
+  cash?: CashMovement[];
+  currency: string;
   onAdd: (account: string) => string | undefined;
   onRename: (from: string, to: string) => boolean;
   onDelete: (account: string) => void;
@@ -28,6 +32,8 @@ export function AccountsDialog({
   onOpenChange,
   accounts,
   transactions,
+  cash = [],
+  currency,
   onAdd,
   onRename,
   onDelete,
@@ -39,9 +45,10 @@ export function AccountsDialog({
   const [editError, setEditError] = useState<string | null>(null);
 
   const usage: Record<string, number> = {};
-  for (const tx of transactions) {
-    if (tx.account) usage[tx.account] = (usage[tx.account] ?? 0) + 1;
+  for (const entry of [...transactions, ...cash]) {
+    if (entry.account) usage[entry.account] = (usage[entry.account] ?? 0) + 1;
   }
+  const balances = computeCashBalances({ transactions, cash });
 
   const handleAdd = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -94,8 +101,8 @@ export function AccountsDialog({
         <DialogHeader>
           <DialogTitle>Accounts</DialogTitle>
           <DialogDescription>
-            The accounts you trade in, such as an ISA or a general account. Holdings are tracked separately per
-            account. An account can only be deleted once no transactions use it.
+            The accounts you trade in, such as an ISA or a general account. Holdings and cash are tracked
+            separately per account. An account can only be deleted once no transactions use it.
           </DialogDescription>
         </DialogHeader>
 
@@ -128,6 +135,7 @@ export function AccountsDialog({
           <ul className="divide-y rounded-lg border">
             {accounts.map((account) => {
               const count = usage[account] ?? 0;
+              const balance = balances.get(account)?.balance ?? 0;
               if (editing === account) {
                 return (
                   <li key={account} className="p-2">
@@ -166,6 +174,10 @@ export function AccountsDialog({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{account}</p>
                     <p className="text-xs text-muted-foreground">
+                      <span className={cn('tabular-nums', balance < 0 && 'text-destructive')}>
+                        {formatCurrency(balance, currency)} cash
+                      </span>
+                      {' · '}
                       {count === 0 ? 'No transactions' : `${count} transaction${count === 1 ? '' : 's'}`}
                     </p>
                   </div>

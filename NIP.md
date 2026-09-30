@@ -45,7 +45,7 @@ const plaintext = await user.signer.nip44.decrypt(user.pubkey, event.content);
 ### Write / update
 
 ```ts
-const payload = { version: 3, transactions, labels, accounts };
+const payload = { version: 4, transactions, cash, labels, accounts };
 const ciphertext = await user.signer.nip44.encrypt(user.pubkey, JSON.stringify(payload));
 await createEvent({
   kind: 30078,
@@ -60,12 +60,12 @@ revisions never tie.
 
 ## Decrypted payload schema
 
-`content` decrypts to a JSON object holding the transactions and the user's
-lists of labels and accounts:
+`content` decrypts to a JSON object holding the trades, the cash movements and
+the user's lists of labels and accounts:
 
 ```jsonc
 {
-  "version": 3,
+  "version": 4,
   "labels": ["Long term", "Dividend"], // user-defined labels, in creation order
   "accounts": ["ISA", "General"],      // accounts trades are made in, in creation order
   "transactions": [
@@ -80,14 +80,28 @@ lists of labels and accounts:
       "fees": 1,              // commission / fees for the trade
       "notes": "Opening position", // optional
       "label": "Long term",   // optional, one of `labels`
-      "account": "ISA"        // optional, one of `accounts`
+      "account": "ISA"        // one of `accounts` (optional in older data)
+    }
+  ],
+  "cash": [
+    {
+      "id": "7a6b5c4d-…",   // opaque client-generated identifier
+      "date": "2023-01-03",  // YYYY-MM-DD
+      "type": "deposit",      // "deposit" | "withdrawal"
+      "amount": 5000,         // always positive; the type gives the direction
+      "account": "ISA",       // one of `accounts` (optional in the schema)
+      "notes": "Initial funding" // optional
     }
   ]
 }
 ```
 
-Consumers should be defensive: drop entries with a missing/invalid `symbol`,
-`date`, `type`, non-positive `quantity`, or negative `price`.
+All amounts are in the user's display currency. Trades in another currency are
+converted before they are entered; the ledger stores no exchange rates.
+
+Consumers should be defensive: drop transactions with a missing/invalid
+`symbol`, `date`, `type`, non-positive `quantity`, or negative `price`, and cash
+movements with a missing/invalid `date`, `type` or non-positive `amount`.
 
 Labels are trimmed, whitespace-collapsed, at most 64 characters, and unique
 case-insensitively. A transaction `label` that is missing from `labels` is added
@@ -95,24 +109,25 @@ to the list on read. Deleting a label removes it from `labels` and clears it fro
 every transaction that used it.
 
 Accounts follow the same normalization rules. Unlike labels, an account is only
-deleted when no transaction uses it; renaming an account renames it on every
-transaction. A transaction `account` missing from `accounts` is added on read.
+deleted when no transaction or cash movement uses it; renaming an account renames
+it everywhere. An `account` on a transaction or cash movement that is missing
+from `accounts` is added on read.
 Positions are computed per account: the same symbol held in two accounts is two
 separate holdings, each with its own cost basis and realized P&L.
 
 ### Older versions
 
-Version 2 is the same object without `accounts`; readers treat a missing
-`accounts` as `[]`.
+Version 3 is the same object without `cash`; readers treat a missing `cash` as
+`[]`. Version 2 also lacks `accounts`, read as `[]`.
 
 Version 1 (legacy)
 
 revisions, written before labels existed, decrypt to a bare JSON array of
 transaction objects (the `transactions` array above, without `label` or
 `account`). Readers must still accept this form and treat it as
-`{ "labels": [], "accounts": [], "transactions": <array> }`.
+`{ "labels": [], "accounts": [], "cash": [], "transactions": <array> }`.
 
-The next write upgrades any older revision to version 3.
+The next write upgrades any older revision to version 4.
 
 ## Derived values (not stored)
 
@@ -120,6 +135,21 @@ Cost basis, average cost, realized P&L, open/closed positions and totals are all
 computed client-side from the transaction list using the **average-cost method**.
 They are never published — only the raw transactions are. Two different clients
 will therefore always agree on the numbers as long as they use the same method.
+
+### Cash
+
+Each account's cash balance is derived the same way, never stored:
+
+```
+cash = deposits − withdrawals − Σ buys (quantity × price + fees) + Σ sells (quantity × price − fees)
+```
+
+Balances are evaluated at the end of each day, so the order of same-day entries
+does not matter. Ledger refuses a new or edited buy or withdrawal (and the
+deletion of a deposit or sell) that would take any account's end-of-day balance
+below zero on any date, unless that account was already lower than that before
+the change. Every trade and cash movement entered in the app belongs to an
+account.
 
 ## Local cache
 

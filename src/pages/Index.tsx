@@ -17,10 +17,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useStockTransactions } from '@/hooks/useStockTransactions';
 import { useToast } from '@/hooks/useToast';
+import { cashBalanceList, newCashShortfalls } from '@/lib/cash';
 import { csvToTransactions } from '@/lib/csv';
 import { DEFAULT_CURRENCY } from '@/lib/currency';
-import { computePortfolio, type Transaction, type TransactionInput } from '@/lib/portfolio';
-import { sampleTransactions } from '@/lib/sampleData';
+import {
+  computePortfolio,
+  formatCurrency,
+  formatDate,
+  type CashMovement,
+  type CashMovementInput,
+  type Transaction,
+  type TransactionInput,
+} from '@/lib/portfolio';
+import { sampleLedger } from '@/lib/sampleData';
 
 function LedgerSkeleton() {
   return (
@@ -65,8 +74,12 @@ export default function Index() {
     addTransaction,
     updateTransaction,
     deleteTransaction,
-    replaceTransactions,
-    clearTransactions,
+    cash,
+    addCashMovement,
+    updateCashMovement,
+    appendEntries,
+    replaceLedger,
+    resetLedger,
     labels,
     addLabel,
     deleteLabel,
@@ -81,18 +94,32 @@ export default function Index() {
   const [currency, setCurrency] = useLocalStorage('stock-ledger:currency', DEFAULT_CURRENCY);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
+  const [editingCash, setEditingCash] = useState<CashMovement | null>(null);
   const [accountsOpen, setAccountsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const portfolio = useMemo(() => computePortfolio(transactions), [transactions]);
+  const cashBalances = useMemo(
+    () => cashBalanceList({ transactions, cash }, accounts),
+    [transactions, cash, accounts],
+  );
+  const cashTotal = cashBalances.reduce((sum, balance) => sum + balance.balance, 0);
 
   const openAdd = () => {
     setEditing(null);
+    setEditingCash(null);
     setDialogOpen(true);
   };
 
   const openEdit = (transaction: Transaction) => {
     setEditing(transaction);
+    setEditingCash(null);
+    setDialogOpen(true);
+  };
+
+  const openEditCash = (entry: CashMovement) => {
+    setEditing(null);
+    setEditingCash(entry);
     setDialogOpen(true);
   };
 
@@ -107,14 +134,45 @@ export default function Index() {
     setDialogOpen(false);
   };
 
+  const handleSubmitCash = (input: CashMovementInput) => {
+    const noun = input.type === 'deposit' ? 'Deposit' : 'Withdrawal';
+    if (editingCash) {
+      updateCashMovement(editingCash.id, input);
+      toast({ title: `${noun} updated` });
+    } else {
+      addCashMovement(input);
+      toast({ title: `${noun} added` });
+    }
+    setDialogOpen(false);
+  };
+
   const handleDelete = (id: string) => {
+    // Deleting a deposit or a sell removes cash; don't let that overdraw an account.
+    const shortfall = newCashShortfalls(
+      { transactions, cash },
+      {
+        transactions: transactions.filter((tx) => tx.id !== id),
+        cash: cash.filter((entry) => entry.id !== id),
+      },
+    )[0];
+    if (shortfall) {
+      const where = shortfall.account ? ` in ${shortfall.account}` : '';
+      const when = shortfall.lowestDate ? ` on ${formatDate(shortfall.lowestDate)}` : '';
+      toast({
+        title: 'Not enough cash',
+        description: `Deleting this would take the cash${where} to ${formatCurrency(shortfall.lowest, currency)}${when}.`,
+        variant: 'destructive',
+      });
+      return;
+    }
     deleteTransaction(id);
     toast({ title: 'Transaction deleted' });
   };
 
   const handleLoadSample = () => {
-    replaceTransactions(sampleTransactions());
-    toast({ title: 'Sample data loaded', description: 'Explore the dashboard, then clear it when ready.' });
+    const sample = sampleLedger();
+    replaceLedger({ ...sample, labels, accounts: [...accounts, ...sample.accounts] });
+    toast({ title: 'Sample data loaded', description: 'Explore the dashboard, then reset the ledger from the data menu when ready.' });
   };
 
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -125,8 +183,9 @@ export default function Index() {
 
     try {
       const text = await file.text();
-      const { transactions: imported, skipped } = csvToTransactions(text);
-      if (imported.length === 0) {
+      const { transactions: imported, cash: importedCash, skipped } = csvToTransactions(text);
+      const count = imported.length + importedCash.length;
+      if (count === 0) {
         toast({
           title: 'Nothing imported',
           description: 'No valid rows found. Make sure your file has date, symbol, type, quantity and price columns.',
@@ -134,9 +193,9 @@ export default function Index() {
         });
         return;
       }
-      replaceTransactions([...transactions, ...imported]);
+      appendEntries(imported, importedCash);
       toast({
-        title: `Imported ${imported.length} transaction${imported.length === 1 ? '' : 's'}`,
+        title: `Imported ${count} transaction${count === 1 ? '' : 's'}`,
         description: skipped > 0 ? `${skipped} row${skipped === 1 ? '' : 's'} skipped.` : undefined,
       });
     } catch (error) {
@@ -145,7 +204,7 @@ export default function Index() {
     }
   };
 
-  const hasTransactions = transactions.length > 0;
+  const hasTransactions = transactions.length > 0 || cash.length > 0;
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -165,10 +224,10 @@ export default function Index() {
         canSync={canSync}
       >
         <DataMenu
-          transactions={transactions}
+          ledger={{ transactions, cash, labels, accounts }}
           onRequestImport={() => fileInputRef.current?.click()}
           onLoadSample={handleLoadSample}
-          onClear={clearTransactions}
+          onReset={resetLedger}
         />
         <LoginArea className="max-w-44 sm:max-w-56" />
       </AppHeader>
@@ -213,7 +272,12 @@ export default function Index() {
             />
           ) : (
             <div className="space-y-6">
-              <SummaryCards portfolio={portfolio} currency={currency} />
+              <SummaryCards
+                portfolio={portfolio}
+                cashTotal={cashTotal}
+                cashAccounts={cashBalances.length}
+                currency={currency}
+              />
 
               <Tabs defaultValue="holdings" className="min-w-0">
                 <TabsList>
@@ -226,7 +290,8 @@ export default function Index() {
                     holdings={portfolio.openHoldings}
                     currency={currency}
                     title="Open positions"
-                    description="Cost basis and realized P&L are calculated with the average-cost method."
+                    description="Cost basis and realized P&L are calculated with the average-cost method. Cash is what each account holds after deposits, withdrawals, buys and sells."
+                    cashBalances={cashBalances}
                     showFooter
                   />
                   {portfolio.closedHoldings.length > 0 ? (
@@ -242,10 +307,12 @@ export default function Index() {
                 <TabsContent value="transactions" className="mt-4">
                   <TransactionsTable
                     transactions={transactions}
+                    cash={cash}
                     labels={labels}
                     accounts={accounts}
                     currency={currency}
                     onEdit={openEdit}
+                    onEditCash={openEditCash}
                     onDelete={handleDelete}
                   />
                 </TabsContent>
@@ -260,7 +327,9 @@ export default function Index() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         transaction={editing}
+        cashMovement={editingCash}
         transactions={transactions}
+        cash={cash}
         symbols={portfolio.symbols}
         currency={currency}
         labels={labels}
@@ -268,6 +337,8 @@ export default function Index() {
         onCreateLabel={addLabel}
         onDeleteLabel={deleteLabel}
         onSubmit={handleSubmit}
+        onSubmitCash={handleSubmitCash}
+        onManageAccounts={() => setAccountsOpen(true)}
       />
 
       <AccountsDialog
@@ -275,6 +346,8 @@ export default function Index() {
         onOpenChange={setAccountsOpen}
         accounts={accounts}
         transactions={transactions}
+        cash={cash}
+        currency={currency}
         onAdd={addAccount}
         onRename={renameAccount}
         onDelete={deleteAccount}

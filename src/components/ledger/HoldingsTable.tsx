@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/table';
 import { LabelBadge } from '@/components/ledger/LabelBadge';
 import { cn } from '@/lib/utils';
+import type { CashBalance } from '@/lib/cash';
 import { formatCurrency, formatQuantity, type Holding } from '@/lib/portfolio';
 
 interface HoldingsTableProps {
@@ -19,10 +20,20 @@ interface HoldingsTableProps {
   title: string;
   description?: string;
   showFooter?: boolean;
+  /** Cash rows to list after the positions, one per account; included in the total. */
+  cashBalances?: CashBalance[];
 }
 
-export function HoldingsTable({ holdings, currency, title, description, showFooter = false }: HoldingsTableProps) {
-  const totalCostBasis = holdings.reduce((sum, holding) => sum + holding.costBasis, 0);
+export function HoldingsTable({
+  holdings,
+  currency,
+  title,
+  description,
+  showFooter = false,
+  cashBalances = [],
+}: HoldingsTableProps) {
+  const totalCash = cashBalances.reduce((sum, cash) => sum + cash.balance, 0);
+  const totalCostBasis = holdings.reduce((sum, holding) => sum + holding.costBasis, 0) + totalCash;
   const totalRealized = holdings.reduce((sum, holding) => sum + holding.realizedPnl, 0);
 
   return (
@@ -110,12 +121,37 @@ export function HoldingsTable({ holdings, currency, title, description, showFoot
                 </TableRow>
               );
             })}
+            {cashBalances.map((cash) => (
+              <TableRow key={`cash:${cash.account ?? ''}`} className="bg-muted/30">
+                <TableCell className="pl-6">
+                  {cash.account ? (
+                    <span className="block max-w-[10rem] truncate font-medium">{cash.account}</span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <span className="font-semibold">Cash</span>
+                </TableCell>
+                <TableCell>
+                  <span className="text-muted-foreground">—</span>
+                </TableCell>
+                <TableCell className="text-right text-muted-foreground">—</TableCell>
+                <TableCell className="text-right text-muted-foreground">—</TableCell>
+                <TableCell
+                  className={cn('text-right font-medium tabular-nums', cash.balance < 0 && 'text-destructive')}
+                >
+                  {formatCurrency(cash.balance, currency)}
+                </TableCell>
+                <TableCell className="pr-6 text-right text-muted-foreground">—</TableCell>
+              </TableRow>
+            ))}
           </TableBody>
           {showFooter ? (
             <TableFooter>
               <TableRow className="hover:bg-transparent">
                 <TableCell className="pl-6" colSpan={5}>
-                  Total
+                  {cashBalances.length > 0 ? 'Total including cash' : 'Total'}
                 </TableCell>
                 <TableCell className="text-right font-semibold tabular-nums">
                   {formatCurrency(totalCostBasis, currency)}

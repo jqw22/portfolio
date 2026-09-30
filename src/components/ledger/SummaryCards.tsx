@@ -1,4 +1,4 @@
-import { Coins, Landmark, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { Banknote, Landmark, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import type { ComponentType } from 'react';
 
 import { Card, CardContent } from '@/components/ui/card';
@@ -7,6 +7,10 @@ import { formatCurrency, type PortfolioSummary } from '@/lib/portfolio';
 
 interface SummaryCardsProps {
   portfolio: PortfolioSummary;
+  /** Total cash across all accounts. */
+  cashTotal: number;
+  /** Number of accounts holding cash entries. */
+  cashAccounts: number;
   currency: string;
 }
 
@@ -23,7 +27,7 @@ function pluralize(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
 
-export function SummaryCards({ portfolio, currency }: SummaryCardsProps) {
+export function SummaryCards({ portfolio, cashTotal, cashAccounts, currency }: SummaryCardsProps) {
   const realizedPositive = portfolio.totalRealizedPnl >= 0;
   const RealizedIcon = realizedPositive ? TrendingUp : TrendingDown;
 
@@ -55,11 +59,12 @@ export function SummaryCards({ portfolio, currency }: SummaryCardsProps) {
         : 'text-rose-600 dark:text-rose-400',
     },
     {
-      label: 'Transactions',
-      value: portfolio.transactionCount.toLocaleString(),
-      hint: `${pluralize(portfolio.symbols.length, 'symbol')} tracked`,
-      icon: Coins,
+      label: 'Cash',
+      value: formatCurrency(cashTotal, currency),
+      hint: `Across ${pluralize(cashAccounts, 'account')}`,
+      icon: Banknote,
       iconClass: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
+      valueClass: cashTotal < 0 ? 'text-rose-600 dark:text-rose-400' : undefined,
     },
   ];
 
