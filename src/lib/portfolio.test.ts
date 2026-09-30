@@ -25,12 +25,6 @@ function holding(transactions: Transaction[], symbol = 'AAPL'): Holding {
   return found;
 }
 
-/** Mirrors the share calculation in `AllocationBars`. */
-function allocation(holdings: Holding[]): Record<string, number> {
-  const total = holdings.reduce((sum, h) => sum + h.costBasis, 0);
-  return Object.fromEntries(holdings.map((h) => [h.symbol, (h.costBasis / total) * 100]));
-}
-
 describe('computePortfolio', () => {
   describe('buys', () => {
     it('includes buy fees in cost basis and average cost', () => {
@@ -174,15 +168,6 @@ describe('computePortfolio', () => {
       expect(summary.holdings.map((h) => h.symbol)).toEqual(['MSFT', 'AAPL', 'TSLA']);
       expect(summary.openHoldings.map((h) => h.symbol)).toEqual(['MSFT', 'AAPL']);
       expect(summary.closedHoldings.map((h) => h.symbol)).toEqual(['TSLA']);
-    });
-
-    it('gives an allocation over open cost basis that sums to 100%', () => {
-      const shares = allocation(computePortfolio(transactions).openHoldings);
-
-      expect(shares.MSFT).toBeCloseTo((1500 / 2250.5) * 100);
-      expect(shares.AAPL).toBeCloseTo((750.5 / 2250.5) * 100);
-      expect(shares.TSLA).toBeUndefined();
-      expect(Object.values(shares).reduce((a, b) => a + b, 0)).toBeCloseTo(100);
     });
   });
 

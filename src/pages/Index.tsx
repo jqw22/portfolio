@@ -3,7 +3,6 @@ import { useSeoMeta } from '@unhead/react';
 import { Plus, RefreshCw } from 'lucide-react';
 
 import { LoginArea } from '@/components/auth/LoginArea';
-import { AllocationBars } from '@/components/ledger/AllocationBars';
 import { AppHeader } from '@/components/ledger/AppHeader';
 import { DataMenu } from '@/components/ledger/DataMenu';
 import { EmptyState } from '@/components/ledger/EmptyState';
@@ -37,22 +36,12 @@ function LedgerSkeleton() {
           </div>
         ))}
       </div>
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="rounded-xl border bg-card p-5">
-          <Skeleton className="h-4 w-28" />
-          <div className="mt-5 space-y-3">
-            {[0, 1, 2, 3, 4].map((index) => (
-              <Skeleton key={index} className="h-9 w-full" />
-            ))}
-          </div>
-        </div>
-        <div className="rounded-xl border bg-card p-5">
-          <Skeleton className="h-4 w-24" />
-          <div className="mt-5 space-y-4">
-            {[0, 1, 2].map((index) => (
-              <Skeleton key={index} className="h-10 w-full" />
-            ))}
-          </div>
+      <div className="rounded-xl border bg-card p-5">
+        <Skeleton className="h-4 w-28" />
+        <div className="mt-5 space-y-3">
+          {[0, 1, 2, 3, 4].map((index) => (
+            <Skeleton key={index} className="h-9 w-full" />
+          ))}
         </div>
       </div>
     </div>
@@ -213,45 +202,39 @@ export default function Index() {
             <div className="space-y-6">
               <SummaryCards portfolio={portfolio} currency={currency} />
 
-              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-                <Tabs defaultValue="holdings" className="min-w-0">
-                  <TabsList>
-                    <TabsTrigger value="holdings">Holdings</TabsTrigger>
-                    <TabsTrigger value="transactions">Transactions</TabsTrigger>
-                  </TabsList>
+              <Tabs defaultValue="holdings" className="min-w-0">
+                <TabsList>
+                  <TabsTrigger value="holdings">Holdings</TabsTrigger>
+                  <TabsTrigger value="transactions">Transactions</TabsTrigger>
+                </TabsList>
 
-                  <TabsContent value="holdings" className="mt-4 space-y-6">
+                <TabsContent value="holdings" className="mt-4 space-y-6">
+                  <HoldingsTable
+                    holdings={portfolio.openHoldings}
+                    currency={currency}
+                    title="Open positions"
+                    description="Cost basis and realized P&L are calculated with the average-cost method."
+                    showFooter
+                  />
+                  {portfolio.closedHoldings.length > 0 ? (
                     <HoldingsTable
-                      holdings={portfolio.openHoldings}
+                      holdings={portfolio.closedHoldings}
                       currency={currency}
-                      title="Open positions"
-                      description="Cost basis and realized P&L are calculated with the average-cost method."
+                      title="Closed positions"
                       showFooter
                     />
-                    {portfolio.closedHoldings.length > 0 ? (
-                      <HoldingsTable
-                        holdings={portfolio.closedHoldings}
-                        currency={currency}
-                        title="Closed positions"
-                        showFooter
-                      />
-                    ) : null}
-                  </TabsContent>
+                  ) : null}
+                </TabsContent>
 
-                  <TabsContent value="transactions" className="mt-4">
-                    <TransactionsTable
-                      transactions={transactions}
-                      currency={currency}
-                      onEdit={openEdit}
-                      onDelete={handleDelete}
-                    />
-                  </TabsContent>
-                </Tabs>
-
-                <div className="space-y-6 lg:sticky lg:top-24 lg:self-start">
-                  <AllocationBars holdings={portfolio.openHoldings} currency={currency} />
-                </div>
-              </div>
+                <TabsContent value="transactions" className="mt-4">
+                  <TransactionsTable
+                    transactions={transactions}
+                    currency={currency}
+                    onEdit={openEdit}
+                    onDelete={handleDelete}
+                  />
+                </TabsContent>
+              </Tabs>
             </div>
           )}
         </div>
