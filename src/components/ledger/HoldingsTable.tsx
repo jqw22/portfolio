@@ -9,6 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { LabelBadge } from '@/components/ledger/LabelBadge';
 import { cn } from '@/lib/utils';
 import { formatCurrency, formatDate, formatPrice, formatQuantity, type Holding } from '@/lib/portfolio';
 
@@ -62,6 +63,13 @@ export function HoldingsTable({ holdings, currency, title, description, showFoot
                     </div>
                     {holding.name ? (
                       <p className="mt-0.5 max-w-[16rem] truncate text-xs text-muted-foreground">{holding.name}</p>
+                    ) : null}
+                    {holding.labels.length > 0 ? (
+                      <div className="mt-1.5 flex max-w-[18rem] flex-wrap gap-1">
+                        {holding.labels.map((label) => (
+                          <LabelBadge key={label} label={label} />
+                        ))}
+                      </div>
                     ) : null}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">

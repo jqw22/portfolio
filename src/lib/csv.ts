@@ -3,7 +3,7 @@
  *
  * The exported format is intentionally spreadsheet-friendly:
  *
- *   Date,Symbol,Name,Type,Quantity,Price,Fees,Notes
+ *   Date,Symbol,Name,Type,Quantity,Price,Fees,Notes,Label
  *
  * The importer is far more forgiving — it matches headers case-insensitively,
  * accepts common synonyms (`qty`, `shares`, `ticker`, ...) and falls back to
@@ -13,12 +13,13 @@
 import {
   newId,
   normalizeDate,
+  normalizeLabel,
   parseNumber,
   type Transaction,
   type TransactionType,
 } from './portfolio';
 
-export const CSV_HEADERS = ['Date', 'Symbol', 'Name', 'Type', 'Quantity', 'Price', 'Fees', 'Notes'] as const;
+export const CSV_HEADERS = ['Date', 'Symbol', 'Name', 'Type', 'Quantity', 'Price', 'Fees', 'Notes', 'Label'] as const;
 
 function csvCell(value: string): string {
   return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -38,6 +39,7 @@ export function transactionsToCsv(transactions: Transaction[]): string {
         String(tx.price),
         String(tx.fees),
         tx.notes ?? '',
+        tx.label ?? '',
       ]
         .map(csvCell)
         .join(','),
@@ -134,6 +136,7 @@ export function csvToTransactions(text: string): CsvImportResult {
   const priceCol = hasHeader ? column('price', 'price per share', 'unit price', 'cost', 'unit cost') : 5;
   const feesCol = hasHeader ? column('fees', 'fee', 'commission', 'commissions') : 6;
   const notesCol = hasHeader ? column('notes', 'note', 'memo', 'comment', 'comments') : 7;
+  const labelCol = hasHeader ? column('label', 'tag', 'category', 'account') : 8;
 
   const cell = (row: string[], index: number): string => (index >= 0 && index < row.length ? row[index].trim() : '');
 
@@ -166,6 +169,7 @@ export function csvToTransactions(text: string): CsvImportResult {
       price,
       fees,
       notes: notes || undefined,
+      label: normalizeLabel(cell(row, labelCol)),
     });
   }
 

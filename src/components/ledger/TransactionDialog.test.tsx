@@ -17,6 +17,9 @@ function renderDialog(onSubmit = vi.fn()) {
       transactions={held}
       symbols={['AAPL']}
       currency="USD"
+      labels={[]}
+      onCreateLabel={(label) => label}
+      onDeleteLabel={() => {}}
       onSubmit={onSubmit}
     />,
   );

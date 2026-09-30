@@ -45,7 +45,8 @@ const plaintext = await user.signer.nip44.decrypt(user.pubkey, event.content);
 ### Write / update
 
 ```ts
-const ciphertext = await user.signer.nip44.encrypt(user.pubkey, JSON.stringify(transactions));
+const payload = { version: 2, transactions, labels };
+const ciphertext = await user.signer.nip44.encrypt(user.pubkey, JSON.stringify(payload));
 await createEvent({
   kind: 30078,
   content: ciphertext,
@@ -59,26 +60,44 @@ revisions never tie.
 
 ## Decrypted payload schema
 
-`content` decrypts to a JSON array of transaction objects:
+`content` decrypts to a JSON object holding the transactions and the user's
+list of labels:
 
 ```jsonc
-[
-  {
-    "id": "0f1e2d3c-…",   // opaque client-generated identifier
-    "symbol": "AAPL",      // upper-cased ticker
-    "name": "Apple Inc.",  // optional display name
-    "date": "2023-01-17",  // YYYY-MM-DD, no time component
-    "type": "buy",          // "buy" | "sell"
-    "quantity": 20,         // shares, always positive
-    "price": 135.94,        // price per share
-    "fees": 1,              // commission / fees for the trade
-    "notes": "Opening position" // optional
-  }
-]
+{
+  "version": 2,
+  "labels": ["Long term", "ISA"],   // user-defined labels, in creation order
+  "transactions": [
+    {
+      "id": "0f1e2d3c-…",   // opaque client-generated identifier
+      "symbol": "AAPL",      // upper-cased ticker
+      "name": "Apple Inc.",  // optional display name
+      "date": "2023-01-17",  // YYYY-MM-DD, no time component
+      "type": "buy",          // "buy" | "sell"
+      "quantity": 20,         // shares, always positive
+      "price": 135.94,        // price per share
+      "fees": 1,              // commission / fees for the trade
+      "notes": "Opening position", // optional
+      "label": "Long term"    // optional, one of `labels`
+    }
+  ]
+}
 ```
 
 Consumers should be defensive: drop entries with a missing/invalid `symbol`,
 `date`, `type`, non-positive `quantity`, or negative `price`.
+
+Labels are trimmed, whitespace-collapsed, at most 64 characters, and unique
+case-insensitively. A transaction `label` that is missing from `labels` is added
+to the list on read. Deleting a label removes it from `labels` and clears it from
+every transaction that used it.
+
+### Version 1 (legacy)
+
+Revisions written before labels existed decrypt to a bare JSON array of
+transaction objects (the `transactions` array above, without `label`). Readers
+must still accept this form and treat it as `{ "labels": [], "transactions": <array> }`.
+The next write upgrades it to version 2.
 
 ## Derived values (not stored)
 

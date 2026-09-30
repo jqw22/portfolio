@@ -24,15 +24,21 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { LabelBadge } from '@/components/ledger/LabelBadge';
 import { cn } from '@/lib/utils';
 import { formatCurrency, formatDate, formatPrice, formatQuantity, type Transaction } from '@/lib/portfolio';
 
-type SortKey = 'date' | 'symbol' | 'quantity' | 'price' | 'total';
+type SortKey = 'date' | 'symbol' | 'label' | 'quantity' | 'price' | 'total';
 type SortDirection = 'asc' | 'desc';
 type TypeFilter = 'all' | 'buy' | 'sell';
 
+/** Select values for the label filter that can't collide with a label name. */
+const ALL_LABELS = '\u0000all';
+const NO_LABEL = '\u0000none';
+
 interface TransactionsTableProps {
   transactions: Transaction[];
+  labels: string[];
   currency: string;
   onEdit: (transaction: Transaction) => void;
   onDelete: (id: string) => void;
@@ -42,6 +48,8 @@ function sortValue(transaction: Transaction, key: SortKey): string | number {
   switch (key) {
     case 'symbol':
       return transaction.symbol;
+    case 'label':
+      return transaction.label ?? '';
     case 'quantity':
       return transaction.quantity;
     case 'price':
@@ -54,9 +62,14 @@ function sortValue(transaction: Transaction, key: SortKey): string | number {
   }
 }
 
-export function TransactionsTable({ transactions, currency, onEdit, onDelete }: TransactionsTableProps) {
+export function TransactionsTable({ transactions, labels, currency, onEdit, onDelete }: TransactionsTableProps) {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
+  const [selectedLabel, setSelectedLabel] = useState<string>(ALL_LABELS);
+  // Fall back to "all" if the filtered label was deleted.
+  const labelFilter = selectedLabel === ALL_LABELS || selectedLabel === NO_LABEL || labels.includes(selectedLabel)
+    ? selectedLabel
+    : ALL_LABELS;
   const [sortKey, setSortKey] = useState<SortKey>('date');
   const [sortDir, setSortDir] = useState<SortDirection>('desc');
   const [pendingDelete, setPendingDelete] = useState<Transaction | null>(null);
@@ -65,11 +78,14 @@ export function TransactionsTable({ transactions, currency, onEdit, onDelete }: 
     const query = search.trim().toLowerCase();
     const filtered = transactions.filter((transaction) => {
       if (typeFilter !== 'all' && transaction.type !== typeFilter) return false;
+      if (labelFilter === NO_LABEL && transaction.label) return false;
+      if (labelFilter !== ALL_LABELS && labelFilter !== NO_LABEL && transaction.label !== labelFilter) return false;
       if (!query) return true;
       return (
         transaction.symbol.toLowerCase().includes(query) ||
         (transaction.name ?? '').toLowerCase().includes(query) ||
-        (transaction.notes ?? '').toLowerCase().includes(query)
+        (transaction.notes ?? '').toLowerCase().includes(query) ||
+        (transaction.label ?? '').toLowerCase().includes(query)
       );
     });
 
@@ -82,7 +98,7 @@ export function TransactionsTable({ transactions, currency, onEdit, onDelete }: 
           : String(left).localeCompare(String(right));
       return sortDir === 'asc' ? comparison : -comparison;
     });
-  }, [transactions, search, typeFilter, sortKey, sortDir]);
+  }, [transactions, search, typeFilter, labelFilter, sortKey, sortDir]);
 
   const handleSort = (key: SortKey) => {
     if (key === sortKey) {
@@ -131,7 +147,7 @@ export function TransactionsTable({ transactions, currency, onEdit, onDelete }: 
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search symbol, name or notes"
+            placeholder="Search symbol, name, label or notes"
             aria-label="Search transactions"
             className="pl-9"
           />
@@ -146,6 +162,22 @@ export function TransactionsTable({ transactions, currency, onEdit, onDelete }: 
             <SelectItem value="sell">Sell</SelectItem>
           </SelectContent>
         </Select>
+        {labels.length > 0 ? (
+          <Select value={labelFilter} onValueChange={setSelectedLabel}>
+            <SelectTrigger className="w-full sm:w-40" aria-label="Filter by label">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_LABELS}>All labels</SelectItem>
+              <SelectItem value={NO_LABEL}>No label</SelectItem>
+              {labels.map((label) => (
+                <SelectItem key={label} value={label}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
       </div>
 
       {rows.length === 0 ? (
@@ -160,6 +192,7 @@ export function TransactionsTable({ transactions, currency, onEdit, onDelete }: 
                 {renderSortHeader('Date', 'date', 'pl-6')}
                 {renderSortHeader('Symbol', 'symbol')}
                 <TableHead>Type</TableHead>
+                {renderSortHeader('Label', 'label')}
                 {renderSortHeader('Quantity', 'quantity', 'text-right')}
                 {renderSortHeader('Price', 'price', 'text-right')}
                 <TableHead className="text-right">Fees</TableHead>
@@ -193,6 +226,13 @@ export function TransactionsTable({ transactions, currency, onEdit, onDelete }: 
                     >
                       {transaction.type === 'buy' ? 'Buy' : 'Sell'}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {transaction.label ? (
+                      <LabelBadge label={transaction.label} />
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{formatQuantity(transaction.quantity)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatPrice(transaction.price, currency)}</TableCell>
