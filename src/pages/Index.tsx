@@ -122,14 +122,19 @@ export default function Index() {
     refresh: refreshPrices,
   } = usePrices(openSymbols, currency);
 
-  const handleRefreshPrices = async () => {
+  /** Pull the ledger from relays (when signed in) and fetch the latest prices. */
+  const handleRefresh = async () => {
+    if (isLoggedIn) refresh();
+    if (openSymbols.length === 0) return;
     const result = await refreshPrices();
+    // Without a key only exchange rates are fetched; that's not worth a toast.
+    if (!hasKey && !result.fxFailed) return;
     const problems: string[] = [];
     if (result.rateLimited) problems.push('The price source limit was reached; try again later.');
     if (result.failed.length > 0 && !result.rateLimited) {
       problems.push(`No price for ${result.failed.map((failure) => failure.symbol).join(', ')}.`);
     }
-    if (result.needKey.length > 0) problems.push('Add an API key in Prices, or enter prices by hand.');
+    if (hasKey && result.needKey.length > 0) problems.push('Add an API key in Prices, or enter prices by hand.');
     if (result.fxFailed) problems.push('Exchange rates could not be updated.');
     toast({
       title: result.updated > 0 ? `Updated ${result.updated} price${result.updated === 1 ? '' : 's'}` : 'No prices updated',
@@ -145,7 +150,7 @@ export default function Index() {
     toast({
       title: 'Price settings saved',
       description:
-        keysChanged && (next.alphaVantageKey || next.finnhubKey) ? 'Press Refresh prices to fetch with your key.' : undefined,
+        keysChanged && (next.alphaVantageKey || next.finnhubKey) ? 'Press Refresh to fetch prices with your key.' : undefined,
     });
   };
 
@@ -287,12 +292,15 @@ export default function Index() {
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {isLoggedIn ? (
-              <Button variant="outline" onClick={refresh} disabled={isSyncing} aria-label="Refresh from relays">
-                <RefreshCw className={isSyncing ? 'animate-spin' : undefined} />
-                <span className="hidden sm:inline">Refresh</span>
-              </Button>
-            ) : null}
+            <Button
+              variant="outline"
+              onClick={handleRefresh}
+              disabled={isSyncing || isRefreshing}
+              aria-label={isLoggedIn ? 'Refresh from relays and fetch latest prices' : 'Fetch latest prices'}
+            >
+              <RefreshCw className={isSyncing || isRefreshing ? 'animate-spin' : undefined} />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
             <Button variant="outline" onClick={() => setAccountsOpen(true)} aria-label="Manage accounts">
               <Wallet />
               <span className="hidden sm:inline">Accounts</span>
@@ -350,18 +358,9 @@ export default function Index() {
                             })}
                           </span>
                         ) : null}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={hasKey ? handleRefreshPrices : () => setPricesOpen(true)}
-                          disabled={isRefreshing}
-                        >
-                          <RefreshCw className={isRefreshing ? 'animate-spin' : undefined} />
-                          {hasKey ? 'Refresh prices' : 'Set up prices'}
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => setPricesOpen(true)} aria-label="Price settings">
+                        <Button variant="outline" size="sm" onClick={() => setPricesOpen(true)} aria-label="Price settings">
                           <LineChart />
-                          Prices
+                          {hasKey ? 'Prices' : 'Set up prices'}
                         </Button>
                       </>
                     }
