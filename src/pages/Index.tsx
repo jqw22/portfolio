@@ -1,9 +1,8 @@
 import { useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useSeoMeta } from '@unhead/react';
-import { HardDrive, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Plus, RefreshCw } from 'lucide-react';
 
 import { LoginArea } from '@/components/auth/LoginArea';
-import { AllocationBars } from '@/components/ledger/AllocationBars';
 import { AppHeader } from '@/components/ledger/AppHeader';
 import { DataMenu } from '@/components/ledger/DataMenu';
 import { EmptyState } from '@/components/ledger/EmptyState';
@@ -12,7 +11,6 @@ import { SummaryCards } from '@/components/ledger/SummaryCards';
 import { TransactionDialog } from '@/components/ledger/TransactionDialog';
 import { TransactionsTable } from '@/components/ledger/TransactionsTable';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
@@ -38,22 +36,12 @@ function LedgerSkeleton() {
           </div>
         ))}
       </div>
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="rounded-xl border bg-card p-5">
-          <Skeleton className="h-4 w-28" />
-          <div className="mt-5 space-y-3">
-            {[0, 1, 2, 3, 4].map((index) => (
-              <Skeleton key={index} className="h-9 w-full" />
-            ))}
-          </div>
-        </div>
-        <div className="rounded-xl border bg-card p-5">
-          <Skeleton className="h-4 w-24" />
-          <div className="mt-5 space-y-4">
-            {[0, 1, 2].map((index) => (
-              <Skeleton key={index} className="h-10 w-full" />
-            ))}
-          </div>
+      <div className="rounded-xl border bg-card p-5">
+        <Skeleton className="h-4 w-28" />
+        <div className="mt-5 space-y-3">
+          {[0, 1, 2, 3, 4].map((index) => (
+            <Skeleton key={index} className="h-9 w-full" />
+          ))}
         </div>
       </div>
     </div>
@@ -214,91 +202,44 @@ export default function Index() {
             <div className="space-y-6">
               <SummaryCards portfolio={portfolio} currency={currency} />
 
-              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-                <Tabs defaultValue="holdings" className="min-w-0">
-                  <TabsList>
-                    <TabsTrigger value="holdings">Holdings</TabsTrigger>
-                    <TabsTrigger value="transactions">Transactions</TabsTrigger>
-                  </TabsList>
+              <Tabs defaultValue="holdings" className="min-w-0">
+                <TabsList>
+                  <TabsTrigger value="holdings">Holdings</TabsTrigger>
+                  <TabsTrigger value="transactions">Transactions</TabsTrigger>
+                </TabsList>
 
-                  <TabsContent value="holdings" className="mt-4 space-y-6">
+                <TabsContent value="holdings" className="mt-4 space-y-6">
+                  <HoldingsTable
+                    holdings={portfolio.openHoldings}
+                    currency={currency}
+                    title="Open positions"
+                    description="Cost basis and realized P&L are calculated with the average-cost method."
+                    showFooter
+                  />
+                  {portfolio.closedHoldings.length > 0 ? (
                     <HoldingsTable
-                      holdings={portfolio.openHoldings}
+                      holdings={portfolio.closedHoldings}
                       currency={currency}
-                      title="Open positions"
-                      description="Cost basis and realized P&L are calculated with the average-cost method."
+                      title="Closed positions"
                       showFooter
                     />
-                    {portfolio.closedHoldings.length > 0 ? (
-                      <HoldingsTable
-                        holdings={portfolio.closedHoldings}
-                        currency={currency}
-                        title="Closed positions"
-                        showFooter
-                      />
-                    ) : null}
-                  </TabsContent>
+                  ) : null}
+                </TabsContent>
 
-                  <TabsContent value="transactions" className="mt-4">
-                    <TransactionsTable
-                      transactions={transactions}
-                      currency={currency}
-                      onEdit={openEdit}
-                      onDelete={handleDelete}
-                    />
-                  </TabsContent>
-                </Tabs>
-
-                <div className="space-y-6 lg:sticky lg:top-24 lg:self-start">
-                  <AllocationBars holdings={portfolio.openHoldings} currency={currency} />
-
-                  <Card className="gap-0 py-0">
-                    <CardContent className="space-y-4 p-5">
-                      <CardTitle className="flex items-center gap-2 text-base">
-                        {isLoggedIn ? (
-                          <ShieldCheck className="size-4 text-emerald-600 dark:text-emerald-400" />
-                        ) : (
-                          <HardDrive className="size-4 text-muted-foreground" />
-                        )}
-                        Where your data lives
-                      </CardTitle>
-                      <ul className="space-y-2 text-sm text-muted-foreground">
-                        {isLoggedIn ? (
-                          <>
-                            <li>End-to-end encrypted to your own Nostr key — relays only see ciphertext.</li>
-                            <li>Synced across every device you sign in on.</li>
-                            <li>Export to CSV or JSON whenever you like.</li>
-                          </>
-                        ) : (
-                          <>
-                            <li>Stored only in this browser, on this device.</li>
-                            <li>Sign in to encrypt it to your Nostr key and sync across devices.</li>
-                            <li>Export to CSV or JSON whenever you like.</li>
-                          </>
-                        )}
-                      </ul>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
+                <TabsContent value="transactions" className="mt-4">
+                  <TransactionsTable
+                    transactions={transactions}
+                    currency={currency}
+                    onEdit={openEdit}
+                    onDelete={handleDelete}
+                  />
+                </TabsContent>
+              </Tabs>
             </div>
           )}
         </div>
       </main>
 
-      <footer className="border-t border-border/70">
-        <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-4 py-8 text-sm text-muted-foreground sm:flex-row sm:px-6">
-          <p>Ledger — cost basis and realized P&L, calculated locally.</p>
-          <a
-            href="https://shakespeare.diy"
-            target="_blank"
-            rel="noreferrer noopener"
-            className="font-medium text-foreground/80 underline-offset-4 transition-colors hover:text-foreground hover:underline"
-          >
-            Vibed with Shakespeare
-          </a>
-        </div>
-      </footer>
 
       <TransactionDialog
         open={dialogOpen}

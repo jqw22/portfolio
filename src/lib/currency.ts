@@ -20,4 +20,4 @@ export const CURRENCIES = [
   'ZAR',
 ];
 
-export const DEFAULT_CURRENCY = 'USD';
+export const DEFAULT_CURRENCY = 'GBP';
