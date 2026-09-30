@@ -38,7 +38,9 @@ export function HoldingsTable({ holdings, currency, title, description, showFoot
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="pl-6">Symbol</TableHead>
+              <TableHead className="pl-6">Account</TableHead>
+              <TableHead>Symbol</TableHead>
+              <TableHead>Label</TableHead>
               <TableHead className="text-right">Shares</TableHead>
               <TableHead className="text-right">Avg cost</TableHead>
               <TableHead className="text-right">Cost basis</TableHead>
@@ -51,8 +53,15 @@ export function HoldingsTable({ holdings, currency, title, description, showFoot
               const isOpen = holding.quantity > 0;
               const positive = holding.realizedPnl >= 0;
               return (
-                <TableRow key={holding.symbol}>
+                <TableRow key={holding.key}>
                   <TableCell className="pl-6">
+                    {holding.account ? (
+                      <span className="block max-w-[10rem] truncate font-medium">{holding.account}</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
                     <div className="flex items-center gap-2">
                       <span className="font-semibold">{holding.symbol}</span>
                       {!isOpen ? (
@@ -64,13 +73,17 @@ export function HoldingsTable({ holdings, currency, title, description, showFoot
                     {holding.name ? (
                       <p className="mt-0.5 max-w-[16rem] truncate text-xs text-muted-foreground">{holding.name}</p>
                     ) : null}
+                  </TableCell>
+                  <TableCell>
                     {holding.labels.length > 0 ? (
-                      <div className="mt-1.5 flex max-w-[18rem] flex-wrap gap-1">
+                      <div className="flex max-w-[18rem] flex-wrap gap-1">
                         {holding.labels.map((label) => (
                           <LabelBadge key={label} label={label} />
                         ))}
                       </div>
-                    ) : null}
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {isOpen ? formatQuantity(holding.quantity) : '—'}
@@ -105,7 +118,7 @@ export function HoldingsTable({ holdings, currency, title, description, showFoot
           {showFooter ? (
             <TableFooter>
               <TableRow className="hover:bg-transparent">
-                <TableCell className="pl-6" colSpan={3}>
+                <TableCell className="pl-6" colSpan={5}>
                   Total
                 </TableCell>
                 <TableCell className="text-right font-semibold tabular-nums">

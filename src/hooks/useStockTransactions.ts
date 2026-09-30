@@ -27,7 +27,9 @@ import {
   mergeLabels,
   normalizeLabel,
   parseLedger,
+  removeAccount,
   removeLabel,
+  renameAccount as renameLedgerAccount,
   type Ledger,
   type Transaction,
   type TransactionInput,
@@ -39,12 +41,15 @@ export const LEDGER_KIND = 30078;
 export const LEDGER_D_TAG = 'stock-ledger';
 
 const CACHE_PREFIX = 'stock-ledger:cache:';
-/** Version 1 caches held transactions only; version 2 adds labels. Both are readable. */
+/**
+ * Version 1 caches held transactions only; version 2 adds labels and accounts
+ * (a missing `accounts` reads as empty). Both are readable.
+ */
 const CACHE_VERSION = 2;
 /** Version of the decrypted relay payload (see NIP.md). */
-const PAYLOAD_VERSION = 2;
+const PAYLOAD_VERSION = 3;
 
-const EMPTY_LEDGER: Ledger = { transactions: [], labels: [] };
+const EMPTY_LEDGER: Ledger = { transactions: [], labels: [], accounts: [] };
 
 interface LedgerCache {
   version: number;
@@ -86,6 +91,8 @@ export interface StockTransactions {
   transactions: Transaction[];
   /** The user's labels, in creation order. */
   labels: string[];
+  /** The user's accounts, in creation order. */
+  accounts: string[];
   isLoading: boolean;
   isSyncing: boolean;
   isLoggedIn: boolean;
@@ -102,6 +109,12 @@ export interface StockTransactions {
   addLabel: (label: string) => string | undefined;
   /** Delete a label and clear it from every transaction that uses it. */
   deleteLabel: (label: string) => void;
+  /** Add an account (no-op if it already exists) and return its stored spelling. */
+  addAccount: (account: string) => string | undefined;
+  /** Rename an account everywhere; returns false if the new name is empty or taken. */
+  renameAccount: (from: string, to: string) => boolean;
+  /** Delete an account; does nothing while any transaction uses it. */
+  deleteAccount: (account: string) => void;
   /** The raw query, exposed for advanced callers. */
   query: UseQueryResult<Ledger, Error>;
 }
@@ -131,7 +144,12 @@ export function useStockTransactions(): StockTransactions {
       if (!nip44) {
         throw new Error('Your signer does not support NIP-44 encryption, so the ledger cannot be synced.');
       }
-      const payload = { version: PAYLOAD_VERSION, transactions: ledger.transactions, labels: ledger.labels };
+      const payload = {
+        version: PAYLOAD_VERSION,
+        transactions: ledger.transactions,
+        labels: ledger.labels,
+        accounts: ledger.accounts,
+      };
       const ciphertext = await nip44.encrypt(user.pubkey, JSON.stringify(payload));
       const now = Math.floor(Date.now() / 1000);
       const createdAt = Math.max(now, lastCreatedAtRef.current + 1);
@@ -220,7 +238,9 @@ export function useStockTransactions(): StockTransactions {
         if (
           local &&
           localUpdatedAt > remoteUpdatedAt &&
-          (local.ledger.transactions.length > 0 || local.ledger.labels.length > 0)
+          (local.ledger.transactions.length > 0 ||
+            local.ledger.labels.length > 0 ||
+            local.ledger.accounts.length > 0)
         ) {
           enqueuePublish(local.ledger);
         }
@@ -307,6 +327,39 @@ export function useStockTransactions(): StockTransactions {
     [commitLedger],
   );
 
+  const addAccount = useCallback(
+    (value: string): string | undefined => {
+      const account = normalizeLabel(value);
+      if (!account) return undefined;
+      const current = queryClient.getQueryData<Ledger>(queryKey) ?? EMPTY_LEDGER;
+      const existing = findLabel(current.accounts, account);
+      if (existing) return existing;
+      commitLedger((previous) => ({ ...previous, accounts: mergeLabels(previous.accounts, [account]) }));
+      return account;
+    },
+    [commitLedger, queryClient, queryKey],
+  );
+
+  const renameAccount = useCallback(
+    (from: string, to: string): boolean => {
+      const name = normalizeLabel(to);
+      if (!name) return false;
+      const current = queryClient.getQueryData<Ledger>(queryKey) ?? EMPTY_LEDGER;
+      const clash = findLabel(current.accounts, name);
+      if (clash && clash.toLowerCase() !== from.toLowerCase()) return false;
+      commitLedger((previous) => renameLedgerAccount(previous, from, name));
+      return true;
+    },
+    [commitLedger, queryClient, queryKey],
+  );
+
+  const deleteAccount = useCallback(
+    (account: string) => {
+      commitLedger((previous) => removeAccount(previous, account));
+    },
+    [commitLedger],
+  );
+
   const refresh = useCallback(() => {
     void query.refetch();
   }, [query]);
@@ -314,6 +367,7 @@ export function useStockTransactions(): StockTransactions {
   return {
     transactions: query.data?.transactions ?? EMPTY_LEDGER.transactions,
     labels: query.data?.labels ?? EMPTY_LEDGER.labels,
+    accounts: query.data?.accounts ?? EMPTY_LEDGER.accounts,
     isLoading: query.isLoading,
     isSyncing,
     isLoggedIn: Boolean(user),
@@ -327,6 +381,9 @@ export function useStockTransactions(): StockTransactions {
     clearTransactions,
     addLabel,
     deleteLabel,
+    addAccount,
+    renameAccount,
+    deleteAccount,
     query,
   };
 }

@@ -3,7 +3,7 @@
  *
  * The exported format is intentionally spreadsheet-friendly:
  *
- *   Date,Symbol,Name,Type,Quantity,Price,Fees,Notes,Label
+ *   Date,Symbol,Name,Type,Quantity,Price,Fees,Notes,Label,Account
  *
  * The importer is far more forgiving — it matches headers case-insensitively,
  * accepts common synonyms (`qty`, `shares`, `ticker`, ...) and falls back to
@@ -19,7 +19,7 @@ import {
   type TransactionType,
 } from './portfolio';
 
-export const CSV_HEADERS = ['Date', 'Symbol', 'Name', 'Type', 'Quantity', 'Price', 'Fees', 'Notes', 'Label'] as const;
+export const CSV_HEADERS = ['Date', 'Symbol', 'Name', 'Type', 'Quantity', 'Price', 'Fees', 'Notes', 'Label', 'Account'] as const;
 
 function csvCell(value: string): string {
   return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -40,6 +40,7 @@ export function transactionsToCsv(transactions: Transaction[]): string {
         String(tx.fees),
         tx.notes ?? '',
         tx.label ?? '',
+        tx.account ?? '',
       ]
         .map(csvCell)
         .join(','),
@@ -136,7 +137,8 @@ export function csvToTransactions(text: string): CsvImportResult {
   const priceCol = hasHeader ? column('price', 'price per share', 'unit price', 'cost', 'unit cost') : 5;
   const feesCol = hasHeader ? column('fees', 'fee', 'commission', 'commissions') : 6;
   const notesCol = hasHeader ? column('notes', 'note', 'memo', 'comment', 'comments') : 7;
-  const labelCol = hasHeader ? column('label', 'tag', 'category', 'account') : 8;
+  const labelCol = hasHeader ? column('label', 'tag', 'category') : 8;
+  const accountCol = hasHeader ? column('account', 'account name', 'portfolio', 'wrapper') : 9;
 
   const cell = (row: string[], index: number): string => (index >= 0 && index < row.length ? row[index].trim() : '');
 
@@ -170,6 +172,7 @@ export function csvToTransactions(text: string): CsvImportResult {
       fees,
       notes: notes || undefined,
       label: normalizeLabel(cell(row, labelCol)),
+      account: normalizeLabel(cell(row, accountCol)),
     });
   }
 
