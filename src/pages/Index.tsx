@@ -7,7 +7,7 @@ import { AccountsDialog } from '@/components/ledger/AccountsDialog';
 import { AppHeader } from '@/components/ledger/AppHeader';
 import { DataMenu } from '@/components/ledger/DataMenu';
 import { EmptyState } from '@/components/ledger/EmptyState';
-import { HoldingsTable } from '@/components/ledger/HoldingsTable';
+import { HoldingsTable, HoldingsTotal } from '@/components/ledger/HoldingsTable';
 import { PricesDialog } from '@/components/ledger/PricesDialog';
 import { SummaryCards } from '@/components/ledger/SummaryCards';
 import { TransactionDialog } from '@/components/ledger/TransactionDialog';
@@ -19,7 +19,7 @@ import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { usePrices } from '@/hooks/usePrices';
 import { useStockTransactions } from '@/hooks/useStockTransactions';
 import { useToast } from '@/hooks/useToast';
-import { cashBalanceList, newCashShortfalls } from '@/lib/cash';
+import { cashBalanceList, newCashShortfalls, type CashBalance } from '@/lib/cash';
 import { csvToTransactions } from '@/lib/csv';
 import { DEFAULT_CURRENCY } from '@/lib/currency';
 import {
@@ -28,10 +28,44 @@ import {
   formatDate,
   type CashMovement,
   type CashMovementInput,
+  type Holding,
   type Transaction,
   type TransactionInput,
 } from '@/lib/portfolio';
 import { sampleLedger } from '@/lib/sampleData';
+
+interface AccountPositions {
+  key: string;
+  account?: string;
+  holdings: Holding[];
+  cash: CashBalance[];
+}
+
+/**
+ * Split open positions and cash by account, in the order of the account list,
+ * with accounts that aren't in the list after it and entries with no account last.
+ */
+function groupByAccount(holdings: Holding[], cashBalances: CashBalance[], accounts: string[]): AccountPositions[] {
+  const groups = new Map<string, AccountPositions>();
+  const groupFor = (account: string | undefined): AccountPositions => {
+    const key = account ?? '';
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, account, holdings: [], cash: [] };
+      groups.set(key, group);
+    }
+    return group;
+  };
+  for (const holding of holdings) groupFor(holding.account).holdings.push(holding);
+  for (const cash of cashBalances) groupFor(cash.account).cash.push(cash);
+
+  const order = (group: AccountPositions): number => {
+    if (!group.account) return accounts.length + 1;
+    const index = accounts.indexOf(group.account);
+    return index === -1 ? accounts.length : index;
+  };
+  return Array.from(groups.values()).sort((a, b) => order(a) - order(b));
+}
 
 function LedgerSkeleton() {
   return (
@@ -107,6 +141,10 @@ export default function Index() {
     [transactions, cash, accounts],
   );
   const cashTotal = cashBalances.reduce((sum, balance) => sum + balance.balance, 0);
+  const accountPositions = useMemo(
+    () => groupByAccount(portfolio.openHoldings, cashBalances, accounts),
+    [portfolio.openHoldings, cashBalances, accounts],
+  );
   const openSymbols = useMemo(
     () => Array.from(new Set(portfolio.openHoldings.map((holding) => holding.symbol))).sort(),
     [portfolio.openHoldings],
@@ -338,15 +376,18 @@ export default function Index() {
                 </TabsList>
 
                 <TabsContent value="holdings" className="mt-4 space-y-6">
-                  <HoldingsTable
-                    holdings={portfolio.openHoldings}
-                    currency={currency}
-                    title="Open positions"
-                    description="Cost basis and realized P&L are calculated with the average-cost method. Cash is what each account holds after deposits, withdrawals, buys and sells."
-                    cashBalances={cashBalances}
-                    prices={prices}
-                    actions={
-                      <>
+                  <section aria-labelledby="open-positions-heading" className="space-y-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 space-y-1.5">
+                        <h2 id="open-positions-heading" className="text-lg font-semibold tracking-tight">
+                          Open positions
+                        </h2>
+                        <p className="text-sm text-muted-foreground">
+                          Grouped by account. Cost basis and realized P&L are calculated with the average-cost method.
+                          Cash is what each account holds after deposits, withdrawals, buys and sells.
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap items-center gap-2">
                         {lastRefreshAt > 0 ? (
                           <span className="text-xs text-muted-foreground" title={new Date(lastRefreshAt).toLocaleString()}>
                             Prices fetched{' '}
@@ -362,10 +403,31 @@ export default function Index() {
                           <LineChart />
                           {hasKey ? 'Prices' : 'Set up prices'}
                         </Button>
-                      </>
-                    }
-                    showFooter
-                  />
+                      </div>
+                    </div>
+                    {accountPositions.map((group) => (
+                      <HoldingsTable
+                        key={group.key}
+                        holdings={group.holdings}
+                        currency={currency}
+                        title={group.account ?? 'No account'}
+                        cashBalances={group.cash}
+                        prices={prices}
+                        showAccount={false}
+                        footerLabel="Subtotal"
+                        showFooter
+                      />
+                    ))}
+                    {accountPositions.length > 1 ? (
+                      <HoldingsTotal
+                        title="All accounts"
+                        holdings={portfolio.openHoldings}
+                        cashBalances={cashBalances}
+                        currency={currency}
+                        prices={prices}
+                      />
+                    ) : null}
+                  </section>
                   {portfolio.closedHoldings.length > 0 ? (
                     <HoldingsTable
                       holdings={portfolio.closedHoldings}
