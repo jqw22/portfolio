@@ -39,6 +39,7 @@ export function HoldingsTable({ holdings, currency, title, description, showFoot
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="pl-6">Symbol</TableHead>
+              <TableHead>Label</TableHead>
               <TableHead className="text-right">Shares</TableHead>
               <TableHead className="text-right">Avg cost</TableHead>
               <TableHead className="text-right">Cost basis</TableHead>
@@ -64,13 +65,17 @@ export function HoldingsTable({ holdings, currency, title, description, showFoot
                     {holding.name ? (
                       <p className="mt-0.5 max-w-[16rem] truncate text-xs text-muted-foreground">{holding.name}</p>
                     ) : null}
+                  </TableCell>
+                  <TableCell>
                     {holding.labels.length > 0 ? (
-                      <div className="mt-1.5 flex max-w-[18rem] flex-wrap gap-1">
+                      <div className="flex max-w-[18rem] flex-wrap gap-1">
                         {holding.labels.map((label) => (
                           <LabelBadge key={label} label={label} />
                         ))}
                       </div>
-                    ) : null}
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {isOpen ? formatQuantity(holding.quantity) : '—'}
@@ -105,7 +110,7 @@ export function HoldingsTable({ holdings, currency, title, description, showFoot
           {showFooter ? (
             <TableFooter>
               <TableRow className="hover:bg-transparent">
-                <TableCell className="pl-6" colSpan={3}>
+                <TableCell className="pl-6" colSpan={4}>
                   Total
                 </TableCell>
                 <TableCell className="text-right font-semibold tabular-nums">
