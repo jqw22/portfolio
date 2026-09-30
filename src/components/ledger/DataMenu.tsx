@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Database, Download, FileUp, Sparkles, Trash2 } from 'lucide-react';
+import { Database, Download, FileUp, RotateCcw, Sparkles } from 'lucide-react';
 
 import {
   AlertDialog,
@@ -21,13 +21,18 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/useToast';
 import { transactionsToCsv } from '@/lib/csv';
-import { todayIso, type Transaction } from '@/lib/portfolio';
+import { todayIso, type Ledger } from '@/lib/portfolio';
 
 interface DataMenuProps {
-  transactions: Transaction[];
+  ledger: Ledger;
   onRequestImport: () => void;
   onLoadSample: () => void;
-  onClear: () => void;
+  /** Delete every transaction, cash movement, label and account. */
+  onReset: () => void;
+}
+
+function pluralize(count: number, noun: string, plural = `${noun}s`): string {
+  return `${count} ${count === 1 ? noun : plural}`;
 }
 
 function downloadFile(filename: string, content: string, type: string): void {
@@ -42,22 +47,26 @@ function downloadFile(filename: string, content: string, type: string): void {
   URL.revokeObjectURL(url);
 }
 
-export function DataMenu({ transactions, onRequestImport, onLoadSample, onClear }: DataMenuProps) {
+export function DataMenu({ ledger, onRequestImport, onLoadSample, onReset }: DataMenuProps) {
   const { toast } = useToast();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  const { transactions, cash, labels, accounts } = ledger;
+  const entryCount = transactions.length + cash.length;
+  const isEmpty = entryCount === 0 && labels.length === 0 && accounts.length === 0;
+
   const handleExportCsv = () => {
-    downloadFile(`stock-ledger-${todayIso()}.csv`, transactionsToCsv(transactions), 'text/csv;charset=utf-8');
+    downloadFile(`stock-ledger-${todayIso()}.csv`, transactionsToCsv(transactions, cash), 'text/csv;charset=utf-8');
     toast({
       title: 'CSV exported',
-      description: `${transactions.length} transaction${transactions.length === 1 ? '' : 's'} downloaded.`,
+      description: `${pluralize(entryCount, 'entry', 'entries')} downloaded.`,
     });
   };
 
   const handleExportJson = () => {
     downloadFile(
       `stock-ledger-${todayIso()}.json`,
-      JSON.stringify(transactions, null, 2),
+      JSON.stringify({ transactions, cash, labels, accounts }, null, 2),
       'application/json;charset=utf-8',
     );
     toast({ title: 'JSON exported', description: 'A machine-readable backup was downloaded.' });
@@ -78,7 +87,7 @@ export function DataMenu({ transactions, onRequestImport, onLoadSample, onClear 
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={handleExportCsv}
-            disabled={transactions.length === 0}
+            disabled={entryCount === 0}
             className="cursor-pointer gap-2"
           >
             <Download className="size-4" />
@@ -86,13 +95,13 @@ export function DataMenu({ transactions, onRequestImport, onLoadSample, onClear 
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={handleExportJson}
-            disabled={transactions.length === 0}
+            disabled={entryCount === 0}
             className="cursor-pointer gap-2"
           >
             <Download className="size-4" />
             Export JSON
           </DropdownMenuItem>
-          {transactions.length === 0 ? (
+          {entryCount === 0 ? (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onLoadSample} className="cursor-pointer gap-2">
@@ -104,12 +113,12 @@ export function DataMenu({ transactions, onRequestImport, onLoadSample, onClear 
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
-            disabled={transactions.length === 0}
+            disabled={isEmpty}
             onClick={() => setConfirmOpen(true)}
             className="cursor-pointer gap-2"
           >
-            <Trash2 className="size-4" />
-            Clear all
+            <RotateCcw className="size-4" />
+            Reset ledger
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -117,10 +126,12 @@ export function DataMenu({ transactions, onRequestImport, onLoadSample, onClear 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Clear the entire ledger?</AlertDialogTitle>
+            <AlertDialogTitle>Reset the entire ledger?</AlertDialogTitle>
             <AlertDialogDescription>
-              This deletes all {transactions.length} transaction{transactions.length === 1 ? '' : 's'}. Export a backup
-              first if you want to keep them.
+              This permanently deletes {pluralize(transactions.length, 'trade')},{' '}
+              {pluralize(cash.length, 'deposit or withdrawal', 'deposits and withdrawals')},{' '}
+              {pluralize(labels.length, 'label')} and {pluralize(accounts.length, 'account')}, here and on your
+              relays. Export a backup first if you want to keep them.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -128,12 +139,12 @@ export function DataMenu({ transactions, onRequestImport, onLoadSample, onClear 
             <AlertDialogAction
               variant="destructive"
               onClick={() => {
-                onClear();
+                onReset();
                 setConfirmOpen(false);
-                toast({ title: 'Ledger cleared' });
+                toast({ title: 'Ledger reset' });
               }}
             >
-              Clear all
+              Reset ledger
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

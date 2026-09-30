@@ -3,7 +3,10 @@
  *
  * The exported format is intentionally spreadsheet-friendly:
  *
- *   Date,Symbol,Name,Type,Quantity,Price,Fees,Notes,Label,Account
+ *   Date,Symbol,Name,Type,Quantity,Price,Fees,Notes,Label,Account,Amount
+ *
+ * Trades leave `Amount` blank. Deposits and withdrawals use the `Deposit` or
+ * `Withdrawal` type with `Date`, `Account`, `Amount` and optional `Notes`.
  *
  * The importer is far more forgiving — it matches headers case-insensitively,
  * accepts common synonyms (`qty`, `shares`, `ticker`, ...) and falls back to
@@ -15,38 +18,59 @@ import {
   normalizeDate,
   normalizeLabel,
   parseNumber,
+  type CashMovement,
+  type CashType,
   type Transaction,
   type TransactionType,
 } from './portfolio';
 
-export const CSV_HEADERS = ['Date', 'Symbol', 'Name', 'Type', 'Quantity', 'Price', 'Fees', 'Notes', 'Label', 'Account'] as const;
+export const CSV_HEADERS = ['Date', 'Symbol', 'Name', 'Type', 'Quantity', 'Price', 'Fees', 'Notes', 'Label', 'Account', 'Amount'] as const;
 
 function csvCell(value: string): string {
   return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
-/** Serialize transactions to a CSV string. */
-export function transactionsToCsv(transactions: Transaction[]): string {
+/** Serialize trades and cash movements to a CSV string, oldest first. */
+export function transactionsToCsv(transactions: Transaction[], cash: CashMovement[] = []): string {
   const rows = [CSV_HEADERS.join(',')];
-  for (const tx of transactions) {
-    rows.push(
-      [
-        tx.date,
-        tx.symbol,
-        tx.name ?? '',
-        tx.type,
-        String(tx.quantity),
-        String(tx.price),
-        String(tx.fees),
-        tx.notes ?? '',
-        tx.label ?? '',
-        tx.account ?? '',
-      ]
-        .map(csvCell)
-        .join(','),
-    );
-  }
+  const entries = [
+    ...cash.map((entry) => ({ date: entry.date, row: cashRow(entry) })),
+    ...transactions.map((tx) => ({ date: tx.date, row: tradeRow(tx) })),
+  ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  for (const entry of entries) rows.push(entry.row.map(csvCell).join(','));
   return rows.join('\n');
+}
+
+function cashRow(entry: CashMovement): string[] {
+  return [
+    entry.date,
+    '',
+    '',
+    entry.type === 'deposit' ? 'Deposit' : 'Withdrawal',
+    '',
+    '',
+    '',
+    entry.notes ?? '',
+    '',
+    entry.account ?? '',
+    String(entry.amount),
+  ];
+}
+
+function tradeRow(tx: Transaction): string[] {
+  return [
+    tx.date,
+    tx.symbol,
+    tx.name ?? '',
+    tx.type,
+    String(tx.quantity),
+    String(tx.price),
+    String(tx.fees),
+    tx.notes ?? '',
+    tx.label ?? '',
+    tx.account ?? '',
+    '',
+  ];
 }
 
 /** Parse CSV text into rows of cells, honoring quoted fields and escaped quotes. */
@@ -96,23 +120,28 @@ export function parseCsv(input: string): string[][] {
   return rows.filter((cells) => cells.some((cell) => cell.trim() !== ''));
 }
 
-function normalizeType(value: string): TransactionType | null {
+function normalizeType(value: string): TransactionType | CashType | null {
   const normalized = value.trim().toLowerCase();
   if (['buy', 'b', 'bought', 'purchase', 'purchased', 'long'].includes(normalized)) return 'buy';
   if (['sell', 's', 'sold', 'sale', 'short'].includes(normalized)) return 'sell';
+  if (['deposit', 'deposited', 'cash in', 'contribution', 'top up', 'top-up', 'transfer in'].includes(normalized)) {
+    return 'deposit';
+  }
+  if (['withdrawal', 'withdraw', 'withdrew', 'cash out', 'transfer out'].includes(normalized)) return 'withdrawal';
   return null;
 }
 
 export interface CsvImportResult {
   transactions: Transaction[];
+  cash: CashMovement[];
   /** Rows that could not be parsed. */
   skipped: number;
 }
 
-/** Convert CSV text into transactions, skipping rows that don't parse cleanly. */
+/** Convert CSV text into trades and cash movements, skipping rows that don't parse cleanly. */
 export function csvToTransactions(text: string): CsvImportResult {
   const rows = parseCsv(text);
-  if (rows.length === 0) return { transactions: [], skipped: 0 };
+  if (rows.length === 0) return { transactions: [], cash: [], skipped: 0 };
 
   const header = rows[0].map((cell) => cell.trim().toLowerCase());
   const knownHeaders = ['date', 'symbol', 'type', 'quantity', 'price'];
@@ -139,16 +168,39 @@ export function csvToTransactions(text: string): CsvImportResult {
   const notesCol = hasHeader ? column('notes', 'note', 'memo', 'comment', 'comments') : 7;
   const labelCol = hasHeader ? column('label', 'tag', 'category') : 8;
   const accountCol = hasHeader ? column('account', 'account name', 'portfolio', 'wrapper') : 9;
+  const amountCol = hasHeader ? column('amount', 'cash amount', 'value') : 10;
 
   const cell = (row: string[], index: number): string => (index >= 0 && index < row.length ? row[index].trim() : '');
 
   const transactions: Transaction[] = [];
+  const cash: CashMovement[] = [];
   let skipped = 0;
 
   for (const row of dataRows) {
     const date = normalizeDate(cell(row, dateCol));
-    const symbol = cell(row, symbolCol).replace(/\s+/g, '').toUpperCase();
     const type = normalizeType(cell(row, typeCol));
+
+    if (type === 'deposit' || type === 'withdrawal') {
+      // Withdrawals are often exported as negative amounts; the type carries the sign.
+      const raw = parseNumber(cell(row, amountCol)) ?? parseNumber(cell(row, priceCol));
+      const amount = raw === null ? null : Math.abs(raw);
+      if (!date || amount === null || amount <= 0) {
+        skipped += 1;
+        continue;
+      }
+      const notes = cell(row, notesCol);
+      cash.push({
+        id: newId(),
+        date,
+        type,
+        amount,
+        account: normalizeLabel(cell(row, accountCol)),
+        notes: notes || undefined,
+      });
+      continue;
+    }
+
+    const symbol = cell(row, symbolCol).replace(/\s+/g, '').toUpperCase();
     const quantity = parseNumber(cell(row, quantityCol));
     const price = parseNumber(cell(row, priceCol));
     const fees = parseNumber(cell(row, feesCol)) ?? 0;
@@ -176,5 +228,5 @@ export function csvToTransactions(text: string): CsvImportResult {
     });
   }
 
-  return { transactions, skipped };
+  return { transactions, cash, skipped };
 }

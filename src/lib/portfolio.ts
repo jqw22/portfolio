@@ -46,9 +46,35 @@ export interface TransactionInput {
   account?: string;
 }
 
-/** Everything that is stored: the trades plus the user's list of labels. */
+export type CashType = 'deposit' | 'withdrawal';
+
+/** Cash paid into or taken out of an account. Amounts are in the default currency. */
+export interface CashMovement {
+  id: string;
+  /** Date as `YYYY-MM-DD`. */
+  date: string;
+  type: CashType;
+  /** Amount of cash moved. Always positive. */
+  amount: number;
+  /** Account the cash moved in or out of, one of the ledger's `accounts`. */
+  account?: string;
+  notes?: string;
+}
+
+/** The user-editable subset of a cash movement (no `id`). */
+export interface CashMovementInput {
+  date: string;
+  type: CashType;
+  amount: number;
+  account?: string;
+  notes?: string;
+}
+
+/** Everything that is stored: trades, cash movements, and the user's labels and accounts. */
 export interface Ledger {
   transactions: Transaction[];
+  /** Deposits and withdrawals. */
+  cash: CashMovement[];
   /** User-defined labels, in the order they were created. */
   labels: string[];
   /** Accounts trades are made in, in the order they were created. */
@@ -144,6 +170,19 @@ export function makeTransaction(input: TransactionInput, id?: string): Transacti
   };
 }
 
+/** Build a clean `CashMovement` from user input, reusing an existing id when provided. */
+export function makeCashMovement(input: CashMovementInput, id?: string): CashMovement {
+  const notes = input.notes?.trim();
+  return {
+    id: id ?? newId(),
+    date: input.date,
+    type: input.type,
+    amount: input.amount,
+    account: normalizeLabel(input.account),
+    notes: notes ? notes : undefined,
+  };
+}
+
 /** Trim and collapse whitespace in a label, returning `undefined` when empty. */
 export function normalizeLabel(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -197,13 +236,17 @@ export function renameAccount(ledger: Ledger, from: string, to: string): Ledger 
     transactions: ledger.transactions.map((tx) =>
       tx.account && tx.account.toLowerCase() === target ? { ...tx, account: name } : tx,
     ),
+    cash: ledger.cash.map((entry) =>
+      entry.account && entry.account.toLowerCase() === target ? { ...entry, account: name } : entry,
+    ),
   };
 }
 
-/** Remove an account, but only when no transaction uses it. */
+/** Remove an account, but only when no transaction or cash movement uses it. */
 export function removeAccount(ledger: Ledger, account: string): Ledger {
   const target = account.toLowerCase();
   if (ledger.transactions.some((tx) => tx.account?.toLowerCase() === target)) return ledger;
+  if (ledger.cash.some((entry) => entry.account?.toLowerCase() === target)) return ledger;
   return { ...ledger, accounts: ledger.accounts.filter((existing) => existing.toLowerCase() !== target) };
 }
 
@@ -453,25 +496,63 @@ export function parseTransactions(value: unknown): Transaction[] {
   return result;
 }
 
+/** Coerce an arbitrary value into a valid `CashMovement` array (drops malformed entries). */
+export function parseCashMovements(value: unknown): CashMovement[] {
+  if (!Array.isArray(value)) return [];
+
+  const result: CashMovement[] = [];
+
+  for (const item of value) {
+    if (typeof item !== 'object' || item === null) continue;
+    const record = item as Record<string, unknown>;
+
+    const date = typeof record.date === 'string' ? normalizeDate(record.date) : null;
+    const type: CashType | null =
+      record.type === 'deposit' || record.type === 'withdrawal' ? record.type : null;
+    const amount = typeof record.amount === 'number' ? record.amount : Number(record.amount);
+
+    if (!date || !type) continue;
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+
+    result.push({
+      id: typeof record.id === 'string' && record.id ? record.id : newId(),
+      date,
+      type,
+      amount,
+      account: normalizeLabel(record.account),
+      notes: typeof record.notes === 'string' && record.notes.trim() ? record.notes.trim() : undefined,
+    });
+  }
+
+  return result;
+}
+
 /**
  * Coerce a stored payload into a `Ledger`. Accepts the current
- * `{ transactions, labels, accounts }` object (older ones lack `labels` or
- * `accounts`) as well as the original bare transaction array. Labels and
- * accounts used by transactions but missing from their lists are added.
+ * `{ transactions, cash, labels, accounts }` object (older ones lack `cash`,
+ * `labels` or `accounts`) as well as the original bare transaction array.
+ * Labels and accounts used by entries but missing from their lists are added.
  */
 export function parseLedger(value: unknown): Ledger {
   let rawTransactions: unknown = value;
+  let rawCash: unknown = [];
   let rawLabels: unknown = [];
   let rawAccounts: unknown = [];
   if (!Array.isArray(value) && typeof value === 'object' && value !== null) {
     const record = value as Record<string, unknown>;
     rawTransactions = record.transactions;
+    rawCash = record.cash;
     rawLabels = record.labels;
     rawAccounts = record.accounts;
   }
   const parsed = parseTransactions(rawTransactions);
+  const parsedCash = parseCashMovements(rawCash);
   const labels = mergeLabels(Array.isArray(rawLabels) ? rawLabels : [], parsed.map((tx) => tx.label));
-  const accounts = mergeLabels(Array.isArray(rawAccounts) ? rawAccounts : [], parsed.map((tx) => tx.account));
+  const accounts = mergeLabels(
+    Array.isArray(rawAccounts) ? rawAccounts : [],
+    parsed.map((tx) => tx.account),
+    parsedCash.map((entry) => entry.account),
+  );
   // Snap each transaction's label and account to the lists' spelling.
   const transactions = parsed.map((tx) =>
     tx.label || tx.account
@@ -482,5 +563,8 @@ export function parseLedger(value: unknown): Ledger {
         }
       : tx,
   );
-  return { transactions, labels, accounts };
+  const cash = parsedCash.map((entry) =>
+    entry.account ? { ...entry, account: findLabel(accounts, entry.account) } : entry,
+  );
+  return { transactions, cash, labels, accounts };
 }

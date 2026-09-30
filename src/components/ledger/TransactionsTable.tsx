@@ -26,11 +26,28 @@ import {
 } from '@/components/ui/table';
 import { LabelBadge } from '@/components/ledger/LabelBadge';
 import { cn } from '@/lib/utils';
-import { formatCurrency, formatDate, formatPrice, formatQuantity, type Transaction } from '@/lib/portfolio';
+import {
+  formatCurrency,
+  formatDate,
+  formatPrice,
+  formatQuantity,
+  type CashMovement,
+  type Transaction,
+} from '@/lib/portfolio';
 
 type SortKey = 'date' | 'account' | 'symbol' | 'label' | 'quantity' | 'price' | 'total';
 type SortDirection = 'asc' | 'desc';
-type TypeFilter = 'all' | 'buy' | 'sell';
+type TypeFilter = 'all' | 'buy' | 'sell' | 'deposit' | 'withdrawal';
+
+/** A row in the table: a trade or a deposit/withdrawal. */
+type Row = { kind: 'trade'; entry: Transaction } | { kind: 'cash'; entry: CashMovement };
+
+const TYPE_BADGES: Record<Exclude<TypeFilter, 'all'>, { label: string; className: string }> = {
+  buy: { label: 'Buy', className: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' },
+  sell: { label: 'Sell', className: 'bg-rose-500/10 text-rose-700 dark:text-rose-400' },
+  deposit: { label: 'Deposit', className: 'bg-sky-500/10 text-sky-700 dark:text-sky-400' },
+  withdrawal: { label: 'Withdrawal', className: 'bg-amber-500/10 text-amber-700 dark:text-amber-400' },
+};
 
 /** Select values for the label filter that can't collide with a label name. */
 const ALL_LABELS = '\u0000all';
@@ -40,14 +57,36 @@ const NO_ACCOUNT = '\u0000none';
 
 interface TransactionsTableProps {
   transactions: Transaction[];
+  cash?: CashMovement[];
   labels: string[];
   accounts: string[];
   currency: string;
   onEdit: (transaction: Transaction) => void;
+  onEditCash?: (entry: CashMovement) => void;
+  /** Delete a trade or cash movement by id. */
   onDelete: (id: string) => void;
 }
 
-function sortValue(transaction: Transaction, key: SortKey): string | number {
+function sortValue(row: Row, key: SortKey): string | number {
+  if (row.kind === 'cash') {
+    const entry = row.entry;
+    switch (key) {
+      case 'account':
+        return entry.account ?? '';
+      case 'symbol':
+      case 'label':
+        return '';
+      case 'quantity':
+      case 'price':
+        return 0;
+      case 'total':
+        return entry.amount;
+      case 'date':
+      default:
+        return entry.date;
+    }
+  }
+  const transaction = row.entry;
   switch (key) {
     case 'symbol':
       return transaction.symbol;
@@ -67,12 +106,29 @@ function sortValue(transaction: Transaction, key: SortKey): string | number {
   }
 }
 
+function rowName(row: Row): string {
+  return row.kind === 'trade' ? `${row.entry.symbol} transaction` : row.entry.type;
+}
+
+function deleteDescription(row: Row, currency: string): string {
+  if (row.kind === 'trade') {
+    const tx = row.entry;
+    return `This removes the ${tx.type} of ${formatQuantity(tx.quantity)} ${tx.symbol} on ${formatDate(tx.date)}.`;
+  }
+  const entry = row.entry;
+  const direction = entry.type === 'deposit' ? 'into' : 'from';
+  const where = entry.account ? ` ${direction} ${entry.account}` : '';
+  return `This removes the ${entry.type} of ${formatCurrency(entry.amount, currency)}${where} on ${formatDate(entry.date)}.`;
+}
+
 export function TransactionsTable({
   transactions,
+  cash = [],
   labels,
   accounts,
   currency,
   onEdit,
+  onEditCash,
   onDelete,
 }: TransactionsTableProps) {
   const [search, setSearch] = useState('');
@@ -89,26 +145,30 @@ export function TransactionsTable({
       : ALL_ACCOUNTS;
   const [sortKey, setSortKey] = useState<SortKey>('date');
   const [sortDir, setSortDir] = useState<SortDirection>('desc');
-  const [pendingDelete, setPendingDelete] = useState<Transaction | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Row | null>(null);
 
   const rows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const filtered = transactions.filter((transaction) => {
-      if (typeFilter !== 'all' && transaction.type !== typeFilter) return false;
-      if (accountFilter === NO_ACCOUNT && transaction.account) return false;
-      if (accountFilter !== ALL_ACCOUNTS && accountFilter !== NO_ACCOUNT && transaction.account !== accountFilter) {
+    const all: Row[] = [
+      ...transactions.map((entry): Row => ({ kind: 'trade', entry })),
+      ...cash.map((entry): Row => ({ kind: 'cash', entry })),
+    ];
+    const filtered = all.filter((row) => {
+      const { entry } = row;
+      const label = row.kind === 'trade' ? row.entry.label : undefined;
+      if (typeFilter !== 'all' && entry.type !== typeFilter) return false;
+      if (accountFilter === NO_ACCOUNT && entry.account) return false;
+      if (accountFilter !== ALL_ACCOUNTS && accountFilter !== NO_ACCOUNT && entry.account !== accountFilter) {
         return false;
       }
-      if (labelFilter === NO_LABEL && transaction.label) return false;
-      if (labelFilter !== ALL_LABELS && labelFilter !== NO_LABEL && transaction.label !== labelFilter) return false;
+      if (labelFilter === NO_LABEL && label) return false;
+      if (labelFilter !== ALL_LABELS && labelFilter !== NO_LABEL && label !== labelFilter) return false;
       if (!query) return true;
-      return (
-        transaction.symbol.toLowerCase().includes(query) ||
-        (transaction.name ?? '').toLowerCase().includes(query) ||
-        (transaction.notes ?? '').toLowerCase().includes(query) ||
-        (transaction.label ?? '').toLowerCase().includes(query) ||
-        (transaction.account ?? '').toLowerCase().includes(query)
-      );
+      const haystack =
+        row.kind === 'trade'
+          ? [row.entry.symbol, row.entry.name, row.entry.notes, row.entry.label, row.entry.account]
+          : [TYPE_BADGES[row.entry.type].label, 'cash', row.entry.notes, row.entry.account];
+      return haystack.some((value) => (value ?? '').toLowerCase().includes(query));
     });
 
     return [...filtered].sort((a, b) => {
@@ -120,7 +180,7 @@ export function TransactionsTable({
           : String(left).localeCompare(String(right));
       return sortDir === 'asc' ? comparison : -comparison;
     });
-  }, [transactions, search, typeFilter, accountFilter, labelFilter, sortKey, sortDir]);
+  }, [transactions, cash, search, typeFilter, accountFilter, labelFilter, sortKey, sortDir]);
 
   const handleSort = (key: SortKey) => {
     if (key === sortKey) {
@@ -175,13 +235,15 @@ export function TransactionsTable({
           />
         </div>
         <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value as TypeFilter)}>
-          <SelectTrigger className="w-full sm:w-32" aria-label="Filter by type">
+          <SelectTrigger className="w-full sm:w-36" aria-label="Filter by type">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All types</SelectItem>
             <SelectItem value="buy">Buy</SelectItem>
             <SelectItem value="sell">Sell</SelectItem>
+            <SelectItem value="deposit">Deposit</SelectItem>
+            <SelectItem value="withdrawal">Withdrawal</SelectItem>
           </SelectContent>
         </Select>
         {accounts.length > 0 ? (
@@ -243,77 +305,91 @@ export function TransactionsTable({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((transaction) => (
-                <TableRow key={transaction.id}>
-                  <TableCell className="pl-6 whitespace-nowrap text-muted-foreground">
-                    {formatDate(transaction.date)}
-                  </TableCell>
-                  <TableCell>
-                    {transaction.account ? (
-                      <span className="block max-w-[10rem] truncate font-medium">{transaction.account}</span>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="font-semibold">{transaction.symbol}</div>
-                    {transaction.name ? (
-                      <p className="max-w-[14rem] truncate text-xs text-muted-foreground">{transaction.name}</p>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      className={cn(
-                        'border-transparent',
-                        transaction.type === 'buy'
-                          ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-                          : 'bg-rose-500/10 text-rose-700 dark:text-rose-400',
+              {rows.map((row) => {
+                const badge = TYPE_BADGES[row.entry.type];
+                const account = row.entry.account;
+                return (
+                  <TableRow key={row.entry.id}>
+                    <TableCell className="pl-6 whitespace-nowrap text-muted-foreground">
+                      {formatDate(row.entry.date)}
+                    </TableCell>
+                    <TableCell>
+                      {account ? (
+                        <span className="block max-w-[10rem] truncate font-medium">{account}</span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
                       )}
-                    >
-                      {transaction.type === 'buy' ? 'Buy' : 'Sell'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {transaction.label ? (
-                      <LabelBadge label={transaction.label} />
+                    </TableCell>
+                    <TableCell>
+                      {row.kind === 'trade' ? (
+                        <>
+                          <div className="font-semibold">{row.entry.symbol}</div>
+                          {row.entry.name ? (
+                            <p className="max-w-[14rem] truncate text-xs text-muted-foreground">{row.entry.name}</p>
+                          ) : null}
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">Cash</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={cn('border-transparent', badge.className)}>{badge.label}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {row.kind === 'trade' && row.entry.label ? (
+                        <LabelBadge label={row.entry.label} />
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    {row.kind === 'trade' ? (
+                      <>
+                        <TableCell className="text-right tabular-nums">{formatQuantity(row.entry.quantity)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatPrice(row.entry.price, currency)}</TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {row.entry.fees > 0 ? formatCurrency(row.entry.fees, currency) : '—'}
+                        </TableCell>
+                        <TableCell className="text-right font-medium tabular-nums">
+                          {formatCurrency(row.entry.quantity * row.entry.price, currency)}
+                        </TableCell>
+                      </>
                     ) : (
-                      <span className="text-muted-foreground">—</span>
+                      <>
+                        <TableCell className="text-right text-muted-foreground">—</TableCell>
+                        <TableCell className="text-right text-muted-foreground">—</TableCell>
+                        <TableCell className="text-right text-muted-foreground">—</TableCell>
+                        <TableCell className="text-right font-medium tabular-nums">
+                          {formatCurrency(row.entry.type === 'deposit' ? row.entry.amount : -row.entry.amount, currency)}
+                        </TableCell>
+                      </>
                     )}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">{formatQuantity(transaction.quantity)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{formatPrice(transaction.price, currency)}</TableCell>
-                  <TableCell className="text-right tabular-nums text-muted-foreground">
-                    {transaction.fees > 0 ? formatCurrency(transaction.fees, currency) : '—'}
-                  </TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">
-                    {formatCurrency(transaction.quantity * transaction.price, currency)}
-                  </TableCell>
-                  <TableCell className="hidden max-w-[16rem] truncate text-muted-foreground lg:table-cell">
-                    {transaction.notes ?? '—'}
-                  </TableCell>
-                  <TableCell className="pr-6 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`Edit ${transaction.symbol} transaction`}
-                        onClick={() => onEdit(transaction)}
-                      >
-                        <Pencil />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`Delete ${transaction.symbol} transaction`}
-                        className="text-muted-foreground hover:text-destructive"
-                        onClick={() => setPendingDelete(transaction)}
-                      >
-                        <Trash2 />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    <TableCell className="hidden max-w-[16rem] truncate text-muted-foreground lg:table-cell">
+                      {row.entry.notes ?? '—'}
+                    </TableCell>
+                    <TableCell className="pr-6 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Edit ${rowName(row)}`}
+                          onClick={() => (row.kind === 'trade' ? onEdit(row.entry) : onEditCash?.(row.entry))}
+                        >
+                          <Pencil />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Delete ${rowName(row)}`}
+                          className="text-muted-foreground hover:text-destructive"
+                          onClick={() => setPendingDelete(row)}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>
@@ -324,9 +400,7 @@ export function TransactionsTable({
           <AlertDialogHeader>
             <AlertDialogTitle>Delete transaction?</AlertDialogTitle>
             <AlertDialogDescription>
-              {pendingDelete
-                ? `This removes the ${pendingDelete.type} of ${formatQuantity(pendingDelete.quantity)} ${pendingDelete.symbol} on ${formatDate(pendingDelete.date)}.`
-                : ''}
+              {pendingDelete ? deleteDescription(pendingDelete, currency) : ''}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -334,7 +408,7 @@ export function TransactionsTable({
             <AlertDialogAction
               variant="destructive"
               onClick={() => {
-                if (pendingDelete) onDelete(pendingDelete.id);
+                if (pendingDelete) onDelete(pendingDelete.entry.id);
                 setPendingDelete(null);
               }}
             >
