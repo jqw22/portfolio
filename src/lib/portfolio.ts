@@ -28,6 +28,8 @@ export interface Transaction {
   notes?: string;
   /** Optional user-defined label, one of the ledger's `labels`. */
   label?: string;
+  /** Optional account the trade was made in, one of the ledger's `accounts`. */
+  account?: string;
 }
 
 /** The user-editable subset of a transaction (no `id`). */
@@ -41,6 +43,7 @@ export interface TransactionInput {
   fees?: number;
   notes?: string;
   label?: string;
+  account?: string;
 }
 
 /** Everything that is stored: the trades plus the user's list of labels. */
@@ -48,11 +51,19 @@ export interface Ledger {
   transactions: Transaction[];
   /** User-defined labels, in the order they were created. */
   labels: string[];
+  /** Accounts trades are made in, in the order they were created. */
+  accounts: string[];
 }
 
-/** Aggregated position for a single symbol, computed with the average-cost method. */
+/**
+ * Aggregated position for a single symbol within one account (or with no
+ * account), computed with the average-cost method.
+ */
 export interface Holding {
+  /** Unique per account + symbol; see `positionKey`. */
+  key: string;
   symbol: string;
+  account?: string;
   name?: string;
   /** Shares still held. */
   quantity: number;
@@ -78,7 +89,7 @@ export interface Holding {
 }
 
 export interface PortfolioSummary {
-  /** Every symbol that has at least one transaction, ordered by cost basis. */
+  /** Every account + symbol pair that has at least one transaction, ordered by cost basis. */
   holdings: Holding[];
   /** Holdings with shares remaining. */
   openHoldings: Holding[];
@@ -117,6 +128,7 @@ export function makeTransaction(input: TransactionInput, id?: string): Transacti
   const name = input.name?.trim();
   const notes = input.notes?.trim();
   const label = normalizeLabel(input.label);
+  const account = normalizeLabel(input.account);
   return {
     id: id ?? newId(),
     symbol: input.symbol.trim().toUpperCase(),
@@ -128,6 +140,7 @@ export function makeTransaction(input: TransactionInput, id?: string): Transacti
     fees: Number.isFinite(input.fees) ? (input.fees as number) : 0,
     notes: notes ? notes : undefined,
     label,
+    account,
   };
 }
 
@@ -163,11 +176,40 @@ export function mergeLabels(...lists: (readonly unknown[])[]): string[] {
 export function removeLabel(ledger: Ledger, label: string): Ledger {
   const target = label.toLowerCase();
   return {
+    ...ledger,
     labels: ledger.labels.filter((existing) => existing.toLowerCase() !== target),
     transactions: ledger.transactions.map((tx) =>
       tx.label && tx.label.toLowerCase() === target ? { ...tx, label: undefined } : tx,
     ),
   };
+}
+
+/** Rename an account in the list and on every transaction made in it. */
+export function renameAccount(ledger: Ledger, from: string, to: string): Ledger {
+  const name = normalizeLabel(to);
+  const target = from.toLowerCase();
+  if (!name) return ledger;
+  const clash = findLabel(ledger.accounts, name);
+  if (clash && clash.toLowerCase() !== target) return ledger;
+  return {
+    ...ledger,
+    accounts: ledger.accounts.map((existing) => (existing.toLowerCase() === target ? name : existing)),
+    transactions: ledger.transactions.map((tx) =>
+      tx.account && tx.account.toLowerCase() === target ? { ...tx, account: name } : tx,
+    ),
+  };
+}
+
+/** Remove an account, but only when no transaction uses it. */
+export function removeAccount(ledger: Ledger, account: string): Ledger {
+  const target = account.toLowerCase();
+  if (ledger.transactions.some((tx) => tx.account?.toLowerCase() === target)) return ledger;
+  return { ...ledger, accounts: ledger.accounts.filter((existing) => existing.toLowerCase() !== target) };
+}
+
+/** Identifies a position: the same symbol in two accounts is two positions. */
+export function positionKey(account: string | undefined, symbol: string): string {
+  return `${account ?? ''}\u0000${symbol}`;
 }
 
 /**
@@ -196,11 +238,14 @@ export function computePortfolio(transactions: Transaction[]): PortfolioSummary 
   for (const tx of sortByDate(transactions)) {
     const symbol = tx.symbol.trim().toUpperCase();
     if (!symbol) continue;
+    const key = positionKey(tx.account, symbol);
 
-    let holding = map.get(symbol);
+    let holding = map.get(key);
     if (!holding) {
       holding = {
+        key,
         symbol,
+        account: tx.account,
         name: tx.name,
         quantity: 0,
         costBasis: 0,
@@ -215,7 +260,7 @@ export function computePortfolio(transactions: Transaction[]): PortfolioSummary 
         lastDate: tx.date,
         labels: [],
       };
-      map.set(symbol, holding);
+      map.set(key, holding);
     }
 
     if (!holding.name && tx.name) holding.name = tx.name;
@@ -272,10 +317,13 @@ export function computePortfolio(transactions: Transaction[]): PortfolioSummary 
 
 /** Symbols where at least one sell exceeds the shares held at the time, sorted alphabetically. */
 export function oversoldSymbols(transactions: Transaction[]): string[] {
-  return computePortfolio(transactions)
-    .holdings.filter((holding) => holding.unmatchedSellQuantity > 0)
-    .map((holding) => holding.symbol)
-    .sort();
+  const symbols = oversoldPositions(transactions).map((holding) => holding.symbol);
+  return Array.from(new Set(symbols)).sort();
+}
+
+/** Positions (account + symbol) where at least one sell exceeds the shares held in that account at the time. */
+export function oversoldPositions(transactions: Transaction[]): Holding[] {
+  return computePortfolio(transactions).holdings.filter((holding) => holding.unmatchedSellQuantity > 0);
 }
 
 /** Format a number as currency, degrading gracefully for unsupported codes. */
@@ -398,6 +446,7 @@ export function parseTransactions(value: unknown): Transaction[] {
       fees: Number.isFinite(fees) ? fees : 0,
       notes: typeof record.notes === 'string' && record.notes.trim() ? record.notes.trim() : undefined,
       label: normalizeLabel(record.label),
+      account: normalizeLabel(record.account),
     });
   }
 
@@ -406,20 +455,32 @@ export function parseTransactions(value: unknown): Transaction[] {
 
 /**
  * Coerce a stored payload into a `Ledger`. Accepts the current
- * `{ transactions, labels }` object as well as the original bare transaction
- * array. Labels used by transactions but missing from the list are added.
+ * `{ transactions, labels, accounts }` object (older ones lack `labels` or
+ * `accounts`) as well as the original bare transaction array. Labels and
+ * accounts used by transactions but missing from their lists are added.
  */
 export function parseLedger(value: unknown): Ledger {
   let rawTransactions: unknown = value;
   let rawLabels: unknown = [];
+  let rawAccounts: unknown = [];
   if (!Array.isArray(value) && typeof value === 'object' && value !== null) {
     const record = value as Record<string, unknown>;
     rawTransactions = record.transactions;
     rawLabels = record.labels;
+    rawAccounts = record.accounts;
   }
   const parsed = parseTransactions(rawTransactions);
   const labels = mergeLabels(Array.isArray(rawLabels) ? rawLabels : [], parsed.map((tx) => tx.label));
-  // Snap each transaction's label to the list's spelling.
-  const transactions = parsed.map((tx) => (tx.label ? { ...tx, label: findLabel(labels, tx.label) } : tx));
-  return { transactions, labels };
+  const accounts = mergeLabels(Array.isArray(rawAccounts) ? rawAccounts : [], parsed.map((tx) => tx.account));
+  // Snap each transaction's label and account to the lists' spelling.
+  const transactions = parsed.map((tx) =>
+    tx.label || tx.account
+      ? {
+          ...tx,
+          label: tx.label ? findLabel(labels, tx.label) : undefined,
+          account: tx.account ? findLabel(accounts, tx.account) : undefined,
+        }
+      : tx,
+  );
+  return { transactions, labels, accounts };
 }

@@ -28,17 +28,20 @@ import { LabelBadge } from '@/components/ledger/LabelBadge';
 import { cn } from '@/lib/utils';
 import { formatCurrency, formatDate, formatPrice, formatQuantity, type Transaction } from '@/lib/portfolio';
 
-type SortKey = 'date' | 'symbol' | 'label' | 'quantity' | 'price' | 'total';
+type SortKey = 'date' | 'account' | 'symbol' | 'label' | 'quantity' | 'price' | 'total';
 type SortDirection = 'asc' | 'desc';
 type TypeFilter = 'all' | 'buy' | 'sell';
 
 /** Select values for the label filter that can't collide with a label name. */
 const ALL_LABELS = '\u0000all';
 const NO_LABEL = '\u0000none';
+const ALL_ACCOUNTS = '\u0000all';
+const NO_ACCOUNT = '\u0000none';
 
 interface TransactionsTableProps {
   transactions: Transaction[];
   labels: string[];
+  accounts: string[];
   currency: string;
   onEdit: (transaction: Transaction) => void;
   onDelete: (id: string) => void;
@@ -48,6 +51,8 @@ function sortValue(transaction: Transaction, key: SortKey): string | number {
   switch (key) {
     case 'symbol':
       return transaction.symbol;
+    case 'account':
+      return transaction.account ?? '';
     case 'label':
       return transaction.label ?? '';
     case 'quantity':
@@ -62,7 +67,14 @@ function sortValue(transaction: Transaction, key: SortKey): string | number {
   }
 }
 
-export function TransactionsTable({ transactions, labels, currency, onEdit, onDelete }: TransactionsTableProps) {
+export function TransactionsTable({
+  transactions,
+  labels,
+  accounts,
+  currency,
+  onEdit,
+  onDelete,
+}: TransactionsTableProps) {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [selectedLabel, setSelectedLabel] = useState<string>(ALL_LABELS);
@@ -70,6 +82,11 @@ export function TransactionsTable({ transactions, labels, currency, onEdit, onDe
   const labelFilter = selectedLabel === ALL_LABELS || selectedLabel === NO_LABEL || labels.includes(selectedLabel)
     ? selectedLabel
     : ALL_LABELS;
+  const [selectedAccount, setSelectedAccount] = useState<string>(ALL_ACCOUNTS);
+  const accountFilter =
+    selectedAccount === ALL_ACCOUNTS || selectedAccount === NO_ACCOUNT || accounts.includes(selectedAccount)
+      ? selectedAccount
+      : ALL_ACCOUNTS;
   const [sortKey, setSortKey] = useState<SortKey>('date');
   const [sortDir, setSortDir] = useState<SortDirection>('desc');
   const [pendingDelete, setPendingDelete] = useState<Transaction | null>(null);
@@ -78,6 +95,10 @@ export function TransactionsTable({ transactions, labels, currency, onEdit, onDe
     const query = search.trim().toLowerCase();
     const filtered = transactions.filter((transaction) => {
       if (typeFilter !== 'all' && transaction.type !== typeFilter) return false;
+      if (accountFilter === NO_ACCOUNT && transaction.account) return false;
+      if (accountFilter !== ALL_ACCOUNTS && accountFilter !== NO_ACCOUNT && transaction.account !== accountFilter) {
+        return false;
+      }
       if (labelFilter === NO_LABEL && transaction.label) return false;
       if (labelFilter !== ALL_LABELS && labelFilter !== NO_LABEL && transaction.label !== labelFilter) return false;
       if (!query) return true;
@@ -85,7 +106,8 @@ export function TransactionsTable({ transactions, labels, currency, onEdit, onDe
         transaction.symbol.toLowerCase().includes(query) ||
         (transaction.name ?? '').toLowerCase().includes(query) ||
         (transaction.notes ?? '').toLowerCase().includes(query) ||
-        (transaction.label ?? '').toLowerCase().includes(query)
+        (transaction.label ?? '').toLowerCase().includes(query) ||
+        (transaction.account ?? '').toLowerCase().includes(query)
       );
     });
 
@@ -98,7 +120,7 @@ export function TransactionsTable({ transactions, labels, currency, onEdit, onDe
           : String(left).localeCompare(String(right));
       return sortDir === 'asc' ? comparison : -comparison;
     });
-  }, [transactions, search, typeFilter, labelFilter, sortKey, sortDir]);
+  }, [transactions, search, typeFilter, accountFilter, labelFilter, sortKey, sortDir]);
 
   const handleSort = (key: SortKey) => {
     if (key === sortKey) {
@@ -147,7 +169,7 @@ export function TransactionsTable({ transactions, labels, currency, onEdit, onDe
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search symbol, name, label or notes"
+            placeholder="Search symbol, name, account, label or notes"
             aria-label="Search transactions"
             className="pl-9"
           />
@@ -162,6 +184,22 @@ export function TransactionsTable({ transactions, labels, currency, onEdit, onDe
             <SelectItem value="sell">Sell</SelectItem>
           </SelectContent>
         </Select>
+        {accounts.length > 0 ? (
+          <Select value={accountFilter} onValueChange={setSelectedAccount}>
+            <SelectTrigger className="w-full sm:w-40" aria-label="Filter by account">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_ACCOUNTS}>All accounts</SelectItem>
+              <SelectItem value={NO_ACCOUNT}>No account</SelectItem>
+              {accounts.map((account) => (
+                <SelectItem key={account} value={account}>
+                  {account}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
         {labels.length > 0 ? (
           <Select value={labelFilter} onValueChange={setSelectedLabel}>
             <SelectTrigger className="w-full sm:w-40" aria-label="Filter by label">
@@ -190,6 +228,7 @@ export function TransactionsTable({ transactions, labels, currency, onEdit, onDe
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 {renderSortHeader('Date', 'date', 'pl-6')}
+                {renderSortHeader('Account', 'account')}
                 {renderSortHeader('Symbol', 'symbol')}
                 <TableHead>Type</TableHead>
                 {renderSortHeader('Label', 'label')}
@@ -208,6 +247,13 @@ export function TransactionsTable({ transactions, labels, currency, onEdit, onDe
                 <TableRow key={transaction.id}>
                   <TableCell className="pl-6 whitespace-nowrap text-muted-foreground">
                     {formatDate(transaction.date)}
+                  </TableCell>
+                  <TableCell>
+                    {transaction.account ? (
+                      <span className="block max-w-[10rem] truncate font-medium">{transaction.account}</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <div className="font-semibold">{transaction.symbol}</div>

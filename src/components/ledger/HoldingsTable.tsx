@@ -38,7 +38,8 @@ export function HoldingsTable({ holdings, currency, title, description, showFoot
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="pl-6">Symbol</TableHead>
+              <TableHead className="pl-6">Account</TableHead>
+              <TableHead>Symbol</TableHead>
               <TableHead>Label</TableHead>
               <TableHead className="text-right">Shares</TableHead>
               <TableHead className="text-right">Avg cost</TableHead>
@@ -52,8 +53,15 @@ export function HoldingsTable({ holdings, currency, title, description, showFoot
               const isOpen = holding.quantity > 0;
               const positive = holding.realizedPnl >= 0;
               return (
-                <TableRow key={holding.symbol}>
+                <TableRow key={holding.key}>
                   <TableCell className="pl-6">
+                    {holding.account ? (
+                      <span className="block max-w-[10rem] truncate font-medium">{holding.account}</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
                     <div className="flex items-center gap-2">
                       <span className="font-semibold">{holding.symbol}</span>
                       {!isOpen ? (
@@ -110,7 +118,7 @@ export function HoldingsTable({ holdings, currency, title, description, showFoot
           {showFooter ? (
             <TableFooter>
               <TableRow className="hover:bg-transparent">
-                <TableCell className="pl-6" colSpan={4}>
+                <TableCell className="pl-6" colSpan={5}>
                   Total
                 </TableCell>
                 <TableCell className="text-right font-semibold tabular-nums">

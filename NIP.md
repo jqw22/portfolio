@@ -45,7 +45,7 @@ const plaintext = await user.signer.nip44.decrypt(user.pubkey, event.content);
 ### Write / update
 
 ```ts
-const payload = { version: 2, transactions, labels };
+const payload = { version: 3, transactions, labels, accounts };
 const ciphertext = await user.signer.nip44.encrypt(user.pubkey, JSON.stringify(payload));
 await createEvent({
   kind: 30078,
@@ -61,12 +61,13 @@ revisions never tie.
 ## Decrypted payload schema
 
 `content` decrypts to a JSON object holding the transactions and the user's
-list of labels:
+lists of labels and accounts:
 
 ```jsonc
 {
-  "version": 2,
-  "labels": ["Long term", "ISA"],   // user-defined labels, in creation order
+  "version": 3,
+  "labels": ["Long term", "Dividend"], // user-defined labels, in creation order
+  "accounts": ["ISA", "General"],      // accounts trades are made in, in creation order
   "transactions": [
     {
       "id": "0f1e2d3c-…",   // opaque client-generated identifier
@@ -78,7 +79,8 @@ list of labels:
       "price": 135.94,        // price per share
       "fees": 1,              // commission / fees for the trade
       "notes": "Opening position", // optional
-      "label": "Long term"    // optional, one of `labels`
+      "label": "Long term",   // optional, one of `labels`
+      "account": "ISA"        // optional, one of `accounts`
     }
   ]
 }
@@ -92,12 +94,25 @@ case-insensitively. A transaction `label` that is missing from `labels` is added
 to the list on read. Deleting a label removes it from `labels` and clears it from
 every transaction that used it.
 
-### Version 1 (legacy)
+Accounts follow the same normalization rules. Unlike labels, an account is only
+deleted when no transaction uses it; renaming an account renames it on every
+transaction. A transaction `account` missing from `accounts` is added on read.
+Positions are computed per account: the same symbol held in two accounts is two
+separate holdings, each with its own cost basis and realized P&L.
 
-Revisions written before labels existed decrypt to a bare JSON array of
-transaction objects (the `transactions` array above, without `label`). Readers
-must still accept this form and treat it as `{ "labels": [], "transactions": <array> }`.
-The next write upgrades it to version 2.
+### Older versions
+
+Version 2 is the same object without `accounts`; readers treat a missing
+`accounts` as `[]`.
+
+Version 1 (legacy)
+
+revisions, written before labels existed, decrypt to a bare JSON array of
+transaction objects (the `transactions` array above, without `label` or
+`account`). Readers must still accept this form and treat it as
+`{ "labels": [], "accounts": [], "transactions": <array> }`.
+
+The next write upgrades any older revision to version 3.
 
 ## Derived values (not stored)
 

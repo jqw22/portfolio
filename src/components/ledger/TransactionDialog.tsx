@@ -10,13 +10,14 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { LabelPicker } from '@/components/ledger/LabelPicker';
 import { cn } from '@/lib/utils';
 import {
   formatCurrency,
   makeTransaction,
-  oversoldSymbols,
+  oversoldPositions,
   parseNumber,
   todayIso,
   type Transaction,
@@ -33,10 +34,14 @@ interface TransactionDialogProps {
   symbols: string[];
   currency: string;
   labels: string[];
+  accounts: string[];
   onCreateLabel: (label: string) => string | undefined;
   onDeleteLabel: (label: string) => void;
   onSubmit: (input: TransactionInput) => void;
 }
+
+/** Select value for "no account"; can't collide with a (trimmed) account name. */
+const NO_ACCOUNT = '\u0000none';
 
 interface FormState {
   type: TransactionType;
@@ -48,6 +53,7 @@ interface FormState {
   fees: string;
   notes: string;
   label: string | undefined;
+  account: string | undefined;
 }
 
 type FormErrors = Partial<Record<keyof FormState, string>>;
@@ -63,6 +69,7 @@ function initialForm(transaction: Transaction | null): FormState {
     fees: transaction && transaction.fees ? String(transaction.fees) : '',
     notes: transaction?.notes ?? '',
     label: transaction?.label,
+    account: transaction?.account,
   };
 }
 
@@ -74,6 +81,7 @@ export function TransactionDialog({
   symbols,
   currency,
   labels,
+  accounts,
   onCreateLabel,
   onDeleteLabel,
   onSubmit,
@@ -92,6 +100,7 @@ export function TransactionDialog({
           symbols={symbols}
           currency={currency}
           labels={labels}
+          accounts={accounts}
           onCreateLabel={onCreateLabel}
           onDeleteLabel={onDeleteLabel}
           onCancel={() => onOpenChange(false)}
@@ -108,6 +117,7 @@ interface TransactionFormProps {
   symbols: string[];
   currency: string;
   labels: string[];
+  accounts: string[];
   onCreateLabel: (label: string) => string | undefined;
   onDeleteLabel: (label: string) => void;
   onCancel: () => void;
@@ -120,6 +130,7 @@ function TransactionForm({
   symbols,
   currency,
   labels,
+  accounts,
   onCreateLabel,
   onDeleteLabel,
   onCancel,
@@ -172,16 +183,21 @@ function TransactionForm({
       fees: feesValue ?? 0,
       notes: form.notes,
       label: form.label,
+      account: form.account,
     };
 
     // Only block oversells this change introduces, so existing bad data doesn't lock the form.
     const others = transactions.filter((tx) => tx.id !== transaction?.id);
-    const before = new Set(oversoldSymbols(transactions));
-    const after = oversoldSymbols([...others, makeTransaction(input, transaction?.id)]);
-    const newlyOversold = after.filter((s) => !before.has(s) && (s === symbol || s === transaction?.symbol));
+    const before = new Set(oversoldPositions(transactions).map((holding) => holding.key));
+    const after = oversoldPositions([...others, makeTransaction(input, transaction?.id)]);
+    const newlyOversold = after.filter(
+      (holding) => !before.has(holding.key) && (holding.symbol === symbol || holding.symbol === transaction?.symbol),
+    );
     if (newlyOversold.length > 0) {
+      const names = Array.from(new Set(newlyOversold.map((holding) => holding.symbol))).join(', ');
+      const where = form.account ? ` in ${form.account}` : accounts.length > 0 ? ' with no account' : '';
       setErrors({
-        quantity: `This would sell more ${newlyOversold.join(', ')} shares than you hold at that point.`,
+        quantity: `This would sell more ${names} shares than you hold${where} at that point.`,
       });
       return;
     }
@@ -219,6 +235,29 @@ function TransactionForm({
             );
           })}
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="tx-account">Account</Label>
+        <Select
+          value={form.account ?? NO_ACCOUNT}
+          onValueChange={(value) => updateForm({ account: value === NO_ACCOUNT ? undefined : value })}
+        >
+          <SelectTrigger id="tx-account" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_ACCOUNT}>No account</SelectItem>
+            {accounts.map((account) => (
+              <SelectItem key={account} value={account}>
+                {account}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {accounts.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Add accounts with the Accounts button on the main page.</p>
+        ) : null}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">

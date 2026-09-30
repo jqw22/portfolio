@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useSeoMeta } from '@unhead/react';
-import { Plus, RefreshCw } from 'lucide-react';
+import { Plus, RefreshCw, Wallet } from 'lucide-react';
 
 import { LoginArea } from '@/components/auth/LoginArea';
+import { AccountsDialog } from '@/components/ledger/AccountsDialog';
 import { AppHeader } from '@/components/ledger/AppHeader';
 import { DataMenu } from '@/components/ledger/DataMenu';
 import { EmptyState } from '@/components/ledger/EmptyState';
@@ -69,6 +70,10 @@ export default function Index() {
     labels,
     addLabel,
     deleteLabel,
+    accounts,
+    addAccount,
+    renameAccount,
+    deleteAccount,
     refresh,
   } = useStockTransactions();
   const { toast } = useToast();
@@ -76,6 +81,7 @@ export default function Index() {
   const [currency, setCurrency] = useLocalStorage('stock-ledger:currency', DEFAULT_CURRENCY);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
+  const [accountsOpen, setAccountsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const portfolio = useMemo(() => computePortfolio(transactions), [transactions]);
@@ -184,6 +190,10 @@ export default function Index() {
                 <span className="hidden sm:inline">Refresh</span>
               </Button>
             ) : null}
+            <Button variant="outline" onClick={() => setAccountsOpen(true)} aria-label="Manage accounts">
+              <Wallet />
+              <span className="hidden sm:inline">Accounts</span>
+            </Button>
             <Button onClick={openAdd}>
               <Plus />
               Add transaction
@@ -233,6 +243,7 @@ export default function Index() {
                   <TransactionsTable
                     transactions={transactions}
                     labels={labels}
+                    accounts={accounts}
                     currency={currency}
                     onEdit={openEdit}
                     onDelete={handleDelete}
@@ -253,9 +264,20 @@ export default function Index() {
         symbols={portfolio.symbols}
         currency={currency}
         labels={labels}
+        accounts={accounts}
         onCreateLabel={addLabel}
         onDeleteLabel={deleteLabel}
         onSubmit={handleSubmit}
+      />
+
+      <AccountsDialog
+        open={accountsOpen}
+        onOpenChange={setAccountsOpen}
+        accounts={accounts}
+        transactions={transactions}
+        onAdd={addAccount}
+        onRename={renameAccount}
+        onDelete={deleteAccount}
       />
     </div>
   );
