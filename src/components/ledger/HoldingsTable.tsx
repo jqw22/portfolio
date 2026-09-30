@@ -23,6 +23,10 @@ interface HoldingsTableProps {
   title: string;
   description?: string;
   showFooter?: boolean;
+  /** Text for the footer row; defaults to "Total" (or "Total including cash"). */
+  footerLabel?: string;
+  /** Show the Account column. Off when the table holds one account only. */
+  showAccount?: boolean;
   /** Cash rows to list after the positions, one per account; included in the total. */
   cashBalances?: CashBalance[];
   /** Latest prices by symbol. When given, the Latest price and Unrealised columns are shown. */
@@ -90,6 +94,8 @@ export function HoldingsTable({
   title,
   description,
   showFooter = false,
+  footerLabel,
+  showAccount = true,
   cashBalances = [],
   prices,
   actions,
@@ -102,7 +108,7 @@ export function HoldingsTable({
 
   return (
     <Card className="gap-0 py-0">
-      <CardHeader className="border-b pb-5">
+      <CardHeader className="gap-0 border-b pt-5 [.border-b]:pb-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 space-y-1.5">
             <CardTitle className="flex items-center gap-2 text-base">
@@ -115,11 +121,12 @@ export function HoldingsTable({
         </div>
       </CardHeader>
       <CardContent className="px-0">
-        <Table>
+        {/* Fixed layout keeps columns lined up when several of these tables are stacked. */}
+        <Table className="min-w-[52rem] table-fixed">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="pl-6">Account</TableHead>
-              <TableHead>Symbol</TableHead>
+              {showAccount ? <TableHead className="pl-6">Account</TableHead> : null}
+              <TableHead className={cn(!showAccount && 'pl-6')}>Symbol</TableHead>
               <TableHead>Label</TableHead>
               <TableHead className="text-right">Shares</TableHead>
               <TableHead className="text-right">Avg cost</TableHead>
@@ -137,14 +144,16 @@ export function HoldingsTable({
               const unrealised = isOpen ? unrealisedGain(holding, price?.price) : null;
               return (
                 <TableRow key={holding.key}>
-                  <TableCell className="pl-6">
-                    {holding.account ? (
-                      <span className="block max-w-[10rem] truncate font-medium">{holding.account}</span>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
+                  {showAccount ? (
+                    <TableCell className="pl-6">
+                      {holding.account ? (
+                        <span className="block max-w-[10rem] truncate font-medium">{holding.account}</span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  ) : null}
+                  <TableCell className={cn(!showAccount && 'pl-6')}>
                     <div className="flex items-center gap-2">
                       <span className="font-semibold">{holding.symbol}</span>
                       {!isOpen ? (
@@ -215,14 +224,16 @@ export function HoldingsTable({
             })}
             {cashBalances.map((cash) => (
               <TableRow key={`cash:${cash.account ?? ''}`} className="bg-muted/30">
-                <TableCell className="pl-6">
-                  {cash.account ? (
-                    <span className="block max-w-[10rem] truncate font-medium">{cash.account}</span>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </TableCell>
-                <TableCell>
+                {showAccount ? (
+                  <TableCell className="pl-6">
+                    {cash.account ? (
+                      <span className="block max-w-[10rem] truncate font-medium">{cash.account}</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                ) : null}
+                <TableCell className={cn(!showAccount && 'pl-6')}>
                   <span className="font-semibold">Cash</span>
                 </TableCell>
                 <TableCell>
@@ -244,8 +255,8 @@ export function HoldingsTable({
           {showFooter ? (
             <TableFooter>
               <TableRow className="hover:bg-transparent">
-                <TableCell className="pl-6" colSpan={showMarket ? 6 : 5}>
-                  {cashBalances.length > 0 ? 'Total including cash' : 'Total'}
+                <TableCell className="pl-6" colSpan={4 + (showAccount ? 1 : 0) + (showMarket ? 1 : 0)}>
+                  {footerLabel ?? (cashBalances.length > 0 ? 'Total including cash' : 'Total')}
                 </TableCell>
                 <TableCell className="text-right font-semibold tabular-nums">
                   {formatCurrency(totalCostBasis, currency)}
@@ -280,6 +291,62 @@ export function HoldingsTable({
             </TableFooter>
           ) : null}
         </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface HoldingsTotalProps {
+  holdings: Holding[];
+  cashBalances: CashBalance[];
+  currency: string;
+  prices?: Record<string, ResolvedPrice | null>;
+  title: string;
+}
+
+/** One line of totals across several holdings tables, e.g. every account's open positions. */
+export function HoldingsTotal({ holdings, cashBalances, currency, prices, title }: HoldingsTotalProps) {
+  const unrealisedTotal = prices ? totalUnrealised(holdings, prices) : null;
+  const totalCash = cashBalances.reduce((sum, cash) => sum + cash.balance, 0);
+  const totalCostBasis = holdings.reduce((sum, holding) => sum + holding.costBasis, 0) + totalCash;
+  const totalRealized = holdings.reduce((sum, holding) => sum + holding.realizedPnl, 0);
+
+  return (
+    <Card className="gap-0 py-0">
+      <CardContent className="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2">
+          <CardTitle className="text-base">{title}</CardTitle>
+          <Badge variant="secondary">{holdings.length}</Badge>
+        </div>
+        <dl className="grid grid-cols-1 gap-4 min-[420px]:grid-cols-3 sm:gap-8">
+          <div className="sm:text-right">
+            <dt className="text-xs text-muted-foreground">{cashBalances.length > 0 ? 'Cost basis incl. cash' : 'Cost basis'}</dt>
+            <dd className="mt-1 font-semibold tabular-nums">{formatCurrency(totalCostBasis, currency)}</dd>
+          </div>
+          {unrealisedTotal ? (
+            <div className="sm:text-right">
+              <dt className="text-xs text-muted-foreground">Unrealised</dt>
+              <dd className="mt-1 tabular-nums">
+                {unrealisedTotal.priced > 0 ? (
+                  <span className={cn('font-semibold', pnlClass(unrealisedTotal.gain))}>
+                    {formatCurrency(unrealisedTotal.gain, currency)}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+                {unrealisedTotal.missing > 0 ? (
+                  <span className="block text-xs text-muted-foreground">{unrealisedTotal.missing} without a price</span>
+                ) : null}
+              </dd>
+            </div>
+          ) : null}
+          <div className="sm:text-right">
+            <dt className="text-xs text-muted-foreground">Realized P&L</dt>
+            <dd className={cn('mt-1 font-semibold tabular-nums', pnlClass(totalRealized))}>
+              {formatCurrency(totalRealized, currency)}
+            </dd>
+          </div>
+        </dl>
       </CardContent>
     </Card>
   );
