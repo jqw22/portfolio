@@ -304,6 +304,7 @@ export default function Index() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         transaction={editing}
+        transactions={transactions}
         symbols={portfolio.symbols}
         currency={currency}
         onSubmit={handleSubmit}

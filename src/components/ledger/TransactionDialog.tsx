@@ -14,6 +14,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import {
   formatCurrency,
+  makeTransaction,
+  oversoldSymbols,
   parseNumber,
   todayIso,
   type Transaction,
@@ -25,6 +27,8 @@ interface TransactionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   transaction: Transaction | null;
+  /** All recorded transactions, used to stop sells of more shares than are held. */
+  transactions: Transaction[];
   symbols: string[];
   currency: string;
   onSubmit: (input: TransactionInput) => void;
@@ -60,6 +64,7 @@ export function TransactionDialog({
   open,
   onOpenChange,
   transaction,
+  transactions,
   symbols,
   currency,
   onSubmit,
@@ -74,6 +79,7 @@ export function TransactionDialog({
         <TransactionForm
           key={transaction?.id ?? 'new'}
           transaction={transaction}
+          transactions={transactions}
           symbols={symbols}
           currency={currency}
           onCancel={() => onOpenChange(false)}
@@ -86,13 +92,14 @@ export function TransactionDialog({
 
 interface TransactionFormProps {
   transaction: Transaction | null;
+  transactions: Transaction[];
   symbols: string[];
   currency: string;
   onCancel: () => void;
   onSubmit: (input: TransactionInput) => void;
 }
 
-function TransactionForm({ transaction, symbols, currency, onCancel, onSubmit }: TransactionFormProps) {
+function TransactionForm({ transaction, transactions, symbols, currency, onCancel, onSubmit }: TransactionFormProps) {
   const [form, setForm] = useState<FormState>(() => initialForm(transaction));
   const [errors, setErrors] = useState<FormErrors>({});
 
@@ -125,7 +132,7 @@ function TransactionForm({ transaction, symbols, currency, onCancel, onSubmit }:
       return;
     }
 
-    onSubmit({
+    const input: TransactionInput = {
       symbol,
       name: form.name,
       date: form.date,
@@ -134,7 +141,21 @@ function TransactionForm({ transaction, symbols, currency, onCancel, onSubmit }:
       price: priceValue ?? 0,
       fees: feesValue ?? 0,
       notes: form.notes,
-    });
+    };
+
+    // Only block oversells this change introduces, so existing bad data doesn't lock the form.
+    const others = transactions.filter((tx) => tx.id !== transaction?.id);
+    const before = new Set(oversoldSymbols(transactions));
+    const after = oversoldSymbols([...others, makeTransaction(input, transaction?.id)]);
+    const newlyOversold = after.filter((s) => !before.has(s) && (s === symbol || s === transaction?.symbol));
+    if (newlyOversold.length > 0) {
+      setErrors({
+        quantity: `This would sell more ${newlyOversold.join(', ')} shares than you hold at that point.`,
+      });
+      return;
+    }
+
+    onSubmit(input);
   };
 
   return (

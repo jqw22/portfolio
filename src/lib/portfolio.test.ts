@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   computePortfolio,
   makeTransaction,
+  oversoldSymbols,
   sortByDate,
   type Holding,
   type Transaction,
@@ -248,38 +249,90 @@ describe('computePortfolio', () => {
     });
   });
 
-  // These pin the current behavior of cases that look wrong. See the PR description;
-  // update the expectations if the math is changed.
-  describe('current behavior of suspect cases', () => {
-    it('overselling counts proceeds for all shares but cost only for shares held', () => {
+  describe('sells that exceed holdings', () => {
+    it('only realizes P&L on the shares actually held', () => {
       const h = holding([
         tx({ type: 'buy', quantity: 10, price: 10, date: '2024-01-01' }),
         tx({ type: 'sell', quantity: 15, price: 12, date: '2024-02-01' }),
       ]);
 
-      // 15 * 12 = 180 proceeds against a cost of 10 * 10 = 100.
-      // Matching only the 10 held shares would give 120 - 100 = 20.
-      expect(h.realizedPnl).toBeCloseTo(80);
+      expect(h.realizedPnl).toBeCloseTo(120 - 100);
       expect(h.quantity).toBe(0);
-      expect(h.totalSold).toBeCloseTo(180);
+      expect(h.totalSold).toBeCloseTo(120);
+      expect(h.unmatchedSellQuantity).toBe(5);
     });
 
-    it('a sell with no prior position books the entire proceeds as profit', () => {
-      const h = holding([tx({ type: 'sell', quantity: 5, price: 20 })]);
+    it('prorates the sell fee to the matched shares', () => {
+      const h = holding([
+        tx({ type: 'buy', quantity: 10, price: 10, date: '2024-01-01' }),
+        tx({ type: 'sell', quantity: 20, price: 12, fees: 4, date: '2024-02-01' }),
+      ]);
 
-      expect(h.realizedPnl).toBeCloseTo(100);
-      expect(h.quantity).toBe(0);
+      expect(h.realizedPnl).toBeCloseTo(120 - 2 - 100);
+      expect(h.totalFees).toBe(4);
     });
 
-    it('a same-day sell entered before its buy is processed first', () => {
+    it('ignores a sell with no prior position', () => {
+      const h = holding([tx({ type: 'sell', quantity: 5, price: 20, fees: 1 })]);
+
+      expect(h.realizedPnl).toBe(0);
+      expect(h.totalSold).toBe(0);
+      expect(h.quantity).toBe(0);
+      expect(h.unmatchedSellQuantity).toBe(5);
+    });
+
+    it('does not let an oversell distort a later buy', () => {
+      const h = holding([
+        tx({ type: 'buy', quantity: 10, price: 10, date: '2024-01-01' }),
+        tx({ type: 'sell', quantity: 15, price: 12, date: '2024-02-01' }),
+        tx({ type: 'buy', quantity: 4, price: 25, date: '2024-03-01' }),
+      ]);
+
+      expect(h.quantity).toBe(4);
+      expect(h.costBasis).toBeCloseTo(100);
+      expect(h.averageCost).toBeCloseTo(25);
+    });
+  });
+
+  describe('same-day trades', () => {
+    it('processes a same-day buy before a sell regardless of entry order', () => {
       const h = holding([
         tx({ type: 'sell', quantity: 5, price: 20, date: '2024-01-01' }),
         tx({ type: 'buy', quantity: 5, price: 10, date: '2024-01-01' }),
       ]);
 
-      // Buy-then-sell would realize 100 - 50 = 50 and leave 0 shares.
-      expect(h.realizedPnl).toBeCloseTo(100);
-      expect(h.quantity).toBe(5);
+      expect(h.realizedPnl).toBeCloseTo(100 - 50);
+      expect(h.quantity).toBe(0);
+      expect(h.unmatchedSellQuantity).toBe(0);
     });
+
+    it('sortByDate puts same-day buys before sells', () => {
+      const sell = tx({ type: 'sell', quantity: 1, price: 1, date: '2024-01-01' });
+      const buy = tx({ type: 'buy', quantity: 1, price: 1, date: '2024-01-01' });
+
+      expect(sortByDate([sell, buy])).toEqual([buy, sell]);
+    });
+  });
+});
+
+describe('oversoldSymbols', () => {
+  it('lists symbols with a sell larger than the position at that date', () => {
+    expect(
+      oversoldSymbols([
+        tx({ symbol: 'MSFT', type: 'sell', quantity: 1, price: 1, date: '2024-01-01' }),
+        tx({ symbol: 'MSFT', type: 'buy', quantity: 5, price: 1, date: '2024-02-01' }),
+        tx({ symbol: 'AAPL', type: 'buy', quantity: 5, price: 1, date: '2024-01-01' }),
+        tx({ symbol: 'AAPL', type: 'sell', quantity: 5, price: 1, date: '2024-01-01' }),
+      ]),
+    ).toEqual(['MSFT']);
+  });
+
+  it('is empty when every sell is covered', () => {
+    expect(
+      oversoldSymbols([
+        tx({ type: 'buy', quantity: 5, price: 1, date: '2024-01-01' }),
+        tx({ type: 'sell', quantity: 5, price: 1, date: '2024-01-02' }),
+      ]),
+    ).toEqual([]);
   });
 });
