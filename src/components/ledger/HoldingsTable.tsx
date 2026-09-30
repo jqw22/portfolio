@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/table';
 import { LabelBadge } from '@/components/ledger/LabelBadge';
 import { cn } from '@/lib/utils';
-import { formatCurrency, formatDate, formatPrice, formatQuantity, type Holding } from '@/lib/portfolio';
+import { formatCurrency, formatQuantity, type Holding } from '@/lib/portfolio';
 
 interface HoldingsTableProps {
   holdings: Holding[];
@@ -44,8 +44,7 @@ export function HoldingsTable({ holdings, currency, title, description, showFoot
               <TableHead className="text-right">Shares</TableHead>
               <TableHead className="text-right">Avg cost</TableHead>
               <TableHead className="text-right">Cost basis</TableHead>
-              <TableHead className="text-right">Realized P&L</TableHead>
-              <TableHead className="pr-6 text-right">Last trade</TableHead>
+              <TableHead className="pr-6 text-right">Realized P&L</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -89,12 +88,12 @@ export function HoldingsTable({ holdings, currency, title, description, showFoot
                     {isOpen ? formatQuantity(holding.quantity) : '—'}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {isOpen ? formatPrice(holding.averageCost, currency) : '—'}
+                    {isOpen ? formatCurrency(holding.averageCost, currency) : '—'}
                   </TableCell>
                   <TableCell className="text-right font-medium tabular-nums">
                     {formatCurrency(holding.costBasis, currency)}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="pr-6 text-right tabular-nums">
                     <span
                       className={cn(
                         'font-medium',
@@ -107,9 +106,6 @@ export function HoldingsTable({ holdings, currency, title, description, showFoot
                     >
                       {holding.realizedPnl === 0 ? '—' : formatCurrency(holding.realizedPnl, currency)}
                     </span>
-                  </TableCell>
-                  <TableCell className="pr-6 text-right text-muted-foreground">
-                    {formatDate(holding.lastDate)}
                   </TableCell>
                 </TableRow>
               );
@@ -126,7 +122,7 @@ export function HoldingsTable({ holdings, currency, title, description, showFoot
                 </TableCell>
                 <TableCell
                   className={cn(
-                    'text-right font-semibold tabular-nums',
+                    'pr-6 text-right font-semibold tabular-nums',
                     totalRealized >= 0
                       ? 'text-emerald-600 dark:text-emerald-400'
                       : 'text-rose-600 dark:text-rose-400',
@@ -134,7 +130,6 @@ export function HoldingsTable({ holdings, currency, title, description, showFoot
                 >
                   {formatCurrency(totalRealized, currency)}
                 </TableCell>
-                <TableCell className="pr-6" />
               </TableRow>
             </TableFooter>
           ) : null}
