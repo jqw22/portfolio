@@ -5,6 +5,8 @@
  * reasoned about (and unit tested) independently of React or Nostr.
  */
 
+import { DEFAULT_CURRENCY } from './currency';
+
 export type TransactionType = 'buy' | 'sell';
 
 /** A single recorded trade. Dates are stored as `YYYY-MM-DD` (no timezone). */
@@ -220,7 +222,7 @@ export function oversoldSymbols(transactions: Transaction[]): string[] {
 }
 
 /** Format a number as currency, degrading gracefully for unsupported codes. */
-export function formatCurrency(value: number, currency = 'USD', options: Intl.NumberFormatOptions = {}): string {
+export function formatCurrency(value: number, currency = DEFAULT_CURRENCY, options: Intl.NumberFormatOptions = {}): string {
   const safe = Number.isFinite(value) ? value : 0;
   try {
     return new Intl.NumberFormat(undefined, { style: 'currency', currency, ...options }).format(safe);
@@ -236,7 +238,7 @@ export function formatQuantity(value: number): string {
 }
 
 /** Format a price with up to four decimal places (stock prices rarely need more). */
-export function formatPrice(value: number, currency = 'USD'): string {
+export function formatPrice(value: number, currency = DEFAULT_CURRENCY): string {
   const safe = Number.isFinite(value) ? value : 0;
   return formatCurrency(safe, currency, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 }
