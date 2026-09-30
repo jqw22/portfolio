@@ -22,6 +22,7 @@ import {
   makeTransaction,
   oversoldPositions,
   parseNumber,
+  sortByDate,
   todayIso,
   type CashMovement,
   type CashMovementInput,
@@ -234,6 +235,13 @@ function TransactionForm({
     ? (computeCashBalances({ transactions: otherTransactions, cash: otherCash }).get(form.account)?.balance ?? 0)
     : null;
 
+  // The latest name given to each symbol, for filling in the name field.
+  const knownNames = new Map<string, string>();
+  for (const tx of sortByDate(transactions)) {
+    const name = tx.name?.trim();
+    if (name) knownNames.set(tx.symbol.trim().toUpperCase(), name);
+  }
+
   const labelUsage: Record<string, number> = {};
   for (const tx of transactions) {
     if (tx.label) labelUsage[tx.label] = (labelUsage[tx.label] ?? 0) + 1;
@@ -281,6 +289,7 @@ function TransactionForm({
 
     if (!form.account) nextErrors.account = 'Choose an account.';
     if (!symbol) nextErrors.symbol = 'Enter a ticker symbol.';
+    if (!form.name.trim()) nextErrors.name = 'Enter the stock name.';
     if (!form.date) nextErrors.date = 'Pick a trade date.';
     if (quantityValue === null || quantityValue <= 0) {
       nextErrors.quantity = 'Enter a quantity greater than zero.';
@@ -432,7 +441,12 @@ function TransactionForm({
               <Input
                 id="tx-symbol"
                 value={form.symbol}
-                onChange={(event) => updateForm({ symbol: event.target.value.toUpperCase() })}
+                onChange={(event) => {
+                  const symbol = event.target.value.toUpperCase();
+                  // Fill in the name from earlier trades of the symbol, unless the user typed their own.
+                  const filled = !form.name.trim() || form.name === knownNames.get(form.symbol.trim());
+                  updateForm(filled ? { symbol, name: knownNames.get(symbol.trim()) ?? '' } : { symbol });
+                }}
                 placeholder="AAPL"
                 autoComplete="off"
                 list="ledger-symbols"
@@ -461,15 +475,15 @@ function TransactionForm({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="tx-name">
-              Name <span className="font-normal text-muted-foreground">(optional)</span>
-            </Label>
+            <Label htmlFor="tx-name">Stock name</Label>
             <Input
               id="tx-name"
               value={form.name}
               onChange={(event) => updateForm({ name: event.target.value })}
               placeholder="Apple Inc."
+              aria-invalid={Boolean(errors.name)}
             />
+            {errors.name ? <p className="text-xs text-destructive">{errors.name}</p> : null}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">

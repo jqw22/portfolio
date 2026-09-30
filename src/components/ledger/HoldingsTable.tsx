@@ -14,7 +14,7 @@ import {
 import { LabelBadge } from '@/components/ledger/LabelBadge';
 import { cn } from '@/lib/utils';
 import type { CashBalance } from '@/lib/cash';
-import { formatCurrency, formatDate, formatPercent, formatQuantity, type Holding } from '@/lib/portfolio';
+import { formatCurrency, formatDate, formatPercent, formatQuantity, holdingDisplayName, type Holding } from '@/lib/portfolio';
 import { isPence, totalUnrealised, unrealisedGain, type ResolvedPrice } from '@/lib/prices';
 
 interface HoldingsTableProps {
@@ -126,7 +126,7 @@ export function HoldingsTable({
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               {showAccount ? <TableHead className="pl-6">Account</TableHead> : null}
-              <TableHead className={cn(!showAccount && 'pl-6')}>Symbol</TableHead>
+              <TableHead className={cn('w-56', !showAccount && 'pl-6')}>Stock</TableHead>
               <TableHead>Label</TableHead>
               <TableHead className="text-right">Shares</TableHead>
               <TableHead className="text-right">Avg cost</TableHead>
@@ -154,16 +154,18 @@ export function HoldingsTable({
                     </TableCell>
                   ) : null}
                   <TableCell className={cn(!showAccount && 'pl-6')}>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold">{holding.symbol}</span>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate font-semibold" title={holdingDisplayName(holding)}>
+                        {holdingDisplayName(holding)}
+                      </span>
                       {!isOpen ? (
-                        <Badge variant="outline" className="text-[0.65rem]">
+                        <Badge variant="outline" className="shrink-0 text-[0.65rem]">
                           Closed
                         </Badge>
                       ) : null}
                     </div>
-                    {holding.name ? (
-                      <p className="mt-0.5 max-w-[16rem] truncate text-xs text-muted-foreground">{holding.name}</p>
+                    {holding.name?.trim() ? (
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">{holding.symbol}</p>
                     ) : null}
                   </TableCell>
                   <TableCell>

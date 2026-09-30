@@ -162,12 +162,23 @@ describe('computePortfolio', () => {
       expect(summary.transactionCount).toBe(5);
     });
 
-    it('splits open and closed holdings and orders holdings by cost basis', () => {
+    it('splits open and closed holdings and orders holdings by name', () => {
       const summary = computePortfolio(transactions);
 
-      expect(summary.holdings.map((h) => h.symbol)).toEqual(['MSFT', 'AAPL', 'TSLA']);
-      expect(summary.openHoldings.map((h) => h.symbol)).toEqual(['MSFT', 'AAPL']);
+      expect(summary.holdings.map((h) => h.symbol)).toEqual(['AAPL', 'MSFT', 'TSLA']);
+      expect(summary.openHoldings.map((h) => h.symbol)).toEqual(['AAPL', 'MSFT']);
       expect(summary.closedHoldings.map((h) => h.symbol)).toEqual(['TSLA']);
+    });
+
+    it('sorts by stock name before symbol', () => {
+      const summary = computePortfolio([
+        tx({ symbol: 'AAPL', name: 'Apple Inc.', type: 'buy', quantity: 1, price: 1 }),
+        tx({ symbol: 'VOD.L', name: 'vodafone Group', type: 'buy', quantity: 1, price: 1 }),
+        tx({ symbol: 'ZZZ', name: 'Alphabet', type: 'buy', quantity: 1, price: 1 }),
+        tx({ symbol: 'BARC.L', type: 'buy', quantity: 1, price: 1 }),
+      ]);
+
+      expect(summary.holdings.map((h) => h.symbol)).toEqual(['ZZZ', 'AAPL', 'BARC.L', 'VOD.L']);
     });
   });
 

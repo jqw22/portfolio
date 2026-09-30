@@ -267,6 +267,21 @@ export function sortByDate(transactions: Transaction[]): Transaction[] {
   });
 }
 
+/** The name a holding is shown and sorted by: its stock name, or the symbol when it has none. */
+export function holdingDisplayName(holding: Pick<Holding, 'name' | 'symbol'>): string {
+  return holding.name?.trim() || holding.symbol;
+}
+
+/** Order holdings by stock name, then symbol, then account. */
+function compareHoldings(a: Holding, b: Holding): number {
+  const options: Intl.CollatorOptions = { sensitivity: 'base', numeric: true };
+  return (
+    holdingDisplayName(a).localeCompare(holdingDisplayName(b), undefined, options) ||
+    a.symbol.localeCompare(b.symbol) ||
+    (a.account ?? '').localeCompare(b.account ?? '', undefined, options)
+  );
+}
+
 /**
  * Compute positions, cost basis and realized P&L using the average-cost method.
  *
@@ -338,7 +353,7 @@ export function computePortfolio(transactions: Transaction[]): PortfolioSummary 
 
   for (const holding of map.values()) holding.labels.sort((a, b) => a.localeCompare(b));
 
-  const holdings = Array.from(map.values()).sort((a, b) => b.costBasis - a.costBasis);
+  const holdings = Array.from(map.values()).sort(compareHoldings);
   const openHoldings = holdings.filter((holding) => holding.quantity > EPSILON);
   const closedHoldings = holdings.filter((holding) => holding.quantity <= EPSILON);
 
