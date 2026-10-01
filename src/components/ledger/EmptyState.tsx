@@ -19,7 +19,7 @@ export function EmptyState({ onAdd, onLoadSample, onImport, isLoggedIn }: EmptyS
       <h2 className="mt-6 text-xl font-semibold tracking-tight sm:text-2xl">Start your ledger</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
         Add an account, deposit cash into it, then record each buy and sell. We'll work out your cash,
-        cost basis, open positions and realized profit/loss automatically.
+        cost basis, open positions and realised profit/loss automatically.
       </p>
 
       <div className="mt-8 flex flex-col items-center justify-center gap-2 sm:flex-row">
