@@ -71,7 +71,7 @@ export function SummaryCards({ portfolio, cashTotal, cashAccounts, currency, pri
       iconClass: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
     },
     {
-      label: 'Realized P&L',
+      label: 'Realised P&L',
       value: formatCurrency(portfolio.totalRealizedPnl, currency),
       hint: `${formatCurrency(portfolio.totalProceeds, currency)} in proceeds`,
       icon: RealizedIcon,

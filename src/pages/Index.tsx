@@ -98,7 +98,7 @@ export default function Index() {
   useSeoMeta({
     title: 'Ledger — Private stock transaction tracker',
     description:
-      'Record stock buys and sells with dates, quantities, prices and fees. Track cost basis and realized P&L — encrypted and synced to your own Nostr relays.',
+      'Record stock buys and sells with dates, quantities, prices and fees. Track cost basis and realised P&L — encrypted and synced to your own Nostr relays.',
   });
 
   const {
@@ -384,7 +384,7 @@ export default function Index() {
                           Open positions
                         </h2>
                         <p className="text-sm text-muted-foreground">
-                          Grouped by account. Cost basis and realized P&L are calculated with the average-cost method.
+                          Grouped by account. Cost basis and realised P&L are calculated with the average-cost method.
                           Cash is what each account holds after deposits, withdrawals, buys and sells.
                         </p>
                       </div>

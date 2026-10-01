@@ -47,6 +47,11 @@ function currentValueTotal(holdings: Holding[], unrealised: UnrealisedTotal, cas
   };
 }
 
+/** Money totals in whole units, e.g. `£2,772`. Prices and average cost keep their pence. */
+function formatWhole(value: number, currency: string): string {
+  return formatCurrency(value, currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
 function pnlClass(value: number): string {
   if (value === 0) return 'text-muted-foreground';
   return value > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400';
@@ -148,7 +153,7 @@ export function HoldingsTable({
               {showMarket ? <TableHead className="w-40 text-right">Latest price</TableHead> : null}
               {showMarket ? <TableHead className="text-right">Current value</TableHead> : null}
               {showMarket ? <TableHead className="text-right">Unrealised</TableHead> : null}
-              <TableHead className="pr-6 text-right">Realized P&L</TableHead>
+              <TableHead className="pr-6 text-right">Realised P&L</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -201,7 +206,7 @@ export function HoldingsTable({
                     {isOpen ? formatCurrency(holding.averageCost, currency) : '—'}
                   </TableCell>
                   <TableCell className="text-right font-medium tabular-nums">
-                    {formatCurrency(holding.costBasis, currency)}
+                    {formatWhole(holding.costBasis, currency)}
                   </TableCell>
                   {showMarket ? (
                     <TableCell className="text-right tabular-nums">
@@ -211,7 +216,7 @@ export function HoldingsTable({
                   {showMarket ? (
                     <TableCell className="text-right font-medium tabular-nums">
                       {unrealised ? (
-                        formatCurrency(unrealised.marketValue, currency)
+                        formatWhole(unrealised.marketValue, currency)
                       ) : (
                         <span className="font-normal text-muted-foreground">—</span>
                       )}
@@ -221,7 +226,7 @@ export function HoldingsTable({
                     <TableCell className="text-right tabular-nums">
                       {unrealised ? (
                         <div className={pnlClass(unrealised.gain)}>
-                          <span className="font-medium">{formatCurrency(unrealised.gain, currency)}</span>
+                          <span className="font-medium">{formatWhole(unrealised.gain, currency)}</span>
                           {unrealised.percent !== null ? (
                             <p className="mt-0.5 text-xs">{formatPercent(unrealised.percent)}</p>
                           ) : null}
@@ -242,7 +247,7 @@ export function HoldingsTable({
                             : 'text-rose-600 dark:text-rose-400',
                       )}
                     >
-                      {holding.realizedPnl === 0 ? '—' : formatCurrency(holding.realizedPnl, currency)}
+                      {holding.realizedPnl === 0 ? '—' : formatWhole(holding.realizedPnl, currency)}
                     </span>
                   </TableCell>
                 </TableRow>
@@ -270,7 +275,7 @@ export function HoldingsTable({
                 <TableCell
                   className={cn('text-right font-medium tabular-nums', cash.balance < 0 && 'text-destructive')}
                 >
-                  {formatCurrency(cash.balance, currency)}
+                  {formatWhole(cash.balance, currency)}
                 </TableCell>
                 {showMarket ? (
                   <>
@@ -278,7 +283,7 @@ export function HoldingsTable({
                     <TableCell
                       className={cn('text-right font-medium tabular-nums', cash.balance < 0 && 'text-destructive')}
                     >
-                      {formatCurrency(cash.balance, currency)}
+                      {formatWhole(cash.balance, currency)}
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">—</TableCell>
                   </>
@@ -294,12 +299,12 @@ export function HoldingsTable({
                   {footerLabel ?? (cashBalances.length > 0 ? 'Total including cash' : 'Total')}
                 </TableCell>
                 <TableCell className="text-right font-semibold tabular-nums">
-                  {formatCurrency(totalCostBasis, currency)}
+                  {formatWhole(totalCostBasis, currency)}
                 </TableCell>
                 {showMarket ? <TableCell /> : null}
                 {valueTotal ? (
                   <TableCell className="text-right tabular-nums">
-                    <span className="font-semibold">{formatCurrency(valueTotal.value, currency)}</span>
+                    <span className="font-semibold">{formatWhole(valueTotal.value, currency)}</span>
                     {valueTotal.missing > 0 ? (
                       <p className="mt-0.5 text-xs font-normal text-muted-foreground">
                         {valueTotal.missing} at cost
@@ -311,7 +316,7 @@ export function HoldingsTable({
                   <TableCell className="text-right tabular-nums">
                     {unrealisedTotal.priced > 0 ? (
                       <span className={cn('font-semibold', pnlClass(unrealisedTotal.gain))}>
-                        {formatCurrency(unrealisedTotal.gain, currency)}
+                        {formatWhole(unrealisedTotal.gain, currency)}
                       </span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
@@ -331,7 +336,7 @@ export function HoldingsTable({
                       : 'text-rose-600 dark:text-rose-400',
                   )}
                 >
-                  {formatCurrency(totalRealized, currency)}
+                  {formatWhole(totalRealized, currency)}
                 </TableCell>
               </TableRow>
             </TableFooter>
@@ -368,13 +373,13 @@ export function HoldingsTotal({ holdings, cashBalances, currency, prices, title 
         <dl className={cn('grid grid-cols-1 gap-4 sm:gap-8', valueTotal ? 'min-[420px]:grid-cols-2 md:grid-cols-4' : 'min-[420px]:grid-cols-3')}>
           <div className="sm:text-right">
             <dt className="text-xs text-muted-foreground">{cashBalances.length > 0 ? 'Cost basis incl. cash' : 'Cost basis'}</dt>
-            <dd className="mt-1 font-semibold tabular-nums">{formatCurrency(totalCostBasis, currency)}</dd>
+            <dd className="mt-1 font-semibold tabular-nums">{formatWhole(totalCostBasis, currency)}</dd>
           </div>
           {valueTotal ? (
             <div className="sm:text-right">
               <dt className="text-xs text-muted-foreground">{cashBalances.length > 0 ? 'Current value incl. cash' : 'Current value'}</dt>
               <dd className="mt-1 tabular-nums">
-                <span className="font-semibold">{formatCurrency(valueTotal.value, currency)}</span>
+                <span className="font-semibold">{formatWhole(valueTotal.value, currency)}</span>
                 {valueTotal.missing > 0 ? (
                   <span className="block text-xs text-muted-foreground">{valueTotal.missing} at cost</span>
                 ) : null}
@@ -387,7 +392,7 @@ export function HoldingsTotal({ holdings, cashBalances, currency, prices, title 
               <dd className="mt-1 tabular-nums">
                 {unrealisedTotal.priced > 0 ? (
                   <span className={cn('font-semibold', pnlClass(unrealisedTotal.gain))}>
-                    {formatCurrency(unrealisedTotal.gain, currency)}
+                    {formatWhole(unrealisedTotal.gain, currency)}
                   </span>
                 ) : (
                   <span className="text-muted-foreground">—</span>
@@ -399,9 +404,9 @@ export function HoldingsTotal({ holdings, cashBalances, currency, prices, title 
             </div>
           ) : null}
           <div className="sm:text-right">
-            <dt className="text-xs text-muted-foreground">Realized P&L</dt>
+            <dt className="text-xs text-muted-foreground">Realised P&L</dt>
             <dd className={cn('mt-1 font-semibold tabular-nums', pnlClass(totalRealized))}>
-              {formatCurrency(totalRealized, currency)}
+              {formatWhole(totalRealized, currency)}
             </dd>
           </div>
         </dl>

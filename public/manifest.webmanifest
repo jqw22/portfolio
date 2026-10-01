@@ -1,7 +1,7 @@
 {
   "name": "Ledger — Stock Transaction Tracker",
   "short_name": "Ledger",
-  "description": "Record stock buys and sells and track cost basis and realized P&L, encrypted to your own Nostr key.",
+  "description": "Record stock buys and sells and track cost basis and realised P&L, encrypted to your own Nostr key.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
