@@ -14,7 +14,7 @@ import {
 import { LabelBadge } from '@/components/ledger/LabelBadge';
 import { cn } from '@/lib/utils';
 import type { CashBalance } from '@/lib/cash';
-import { formatCurrency, formatDate, formatPercent, formatQuantity, holdingDisplayName, type Holding } from '@/lib/portfolio';
+import { formatCurrency, formatDate, formatWhole, formatPercent, formatQuantity, holdingDisplayName, type Holding } from '@/lib/portfolio';
 import { isPence, totalUnrealised, unrealisedGain, type ResolvedPrice, type UnrealisedTotal } from '@/lib/prices';
 
 interface HoldingsTableProps {
@@ -45,11 +45,6 @@ function currentValueTotal(holdings: Holding[], unrealised: UnrealisedTotal, cas
     value: unrealised.marketValue + (openCost - unrealised.costBasis) + cash,
     missing: unrealised.missing,
   };
-}
-
-/** Money totals in whole units, e.g. `£2,772`. Prices and average cost keep their pence. */
-function formatWhole(value: number, currency: string): string {
-  return formatCurrency(value, currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
 function pnlClass(value: number): string {

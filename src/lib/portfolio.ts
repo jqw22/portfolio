@@ -394,6 +394,11 @@ export function formatCurrency(value: number, currency = DEFAULT_CURRENCY, optio
   }
 }
 
+/** Money totals in whole units, e.g. `£2,772`. Prices and average cost keep their pence. */
+export function formatWhole(value: number, currency = DEFAULT_CURRENCY): string {
+  return formatCurrency(value, currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
 /** Format a share quantity without trailing noise. */
 export function formatQuantity(value: number): string {
   const safe = Number.isFinite(value) ? value : 0;

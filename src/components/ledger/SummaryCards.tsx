@@ -3,7 +3,7 @@ import type { ComponentType } from 'react';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { formatCurrency, type PortfolioSummary } from '@/lib/portfolio';
+import { formatWhole, type PortfolioSummary } from '@/lib/portfolio';
 import { totalUnrealised, type ResolvedPrice } from '@/lib/prices';
 
 interface SummaryCardsProps {
@@ -51,29 +51,29 @@ export function SummaryCards({ portfolio, cashTotal, cashAccounts, currency, pri
         : 'No open positions'
       : current.missing > 0
         ? `${pluralize(current.missing, 'position')} without a price, at cost`
-        : `${gainSign}${formatCurrency(current.gain, currency)} unrealised`;
+        : `${gainSign}${formatWhole(current.gain, currency)} unrealised`;
   const realizedPositive = portfolio.totalRealizedPnl >= 0;
   const RealizedIcon = realizedPositive ? TrendingUp : TrendingDown;
 
   const items: SummaryItem[] = [
     {
       label: 'Cost basis',
-      value: formatCurrency(portfolio.totalCostBasis, currency),
+      value: formatWhole(portfolio.totalCostBasis, currency),
       hint: `${pluralize(portfolio.openHoldings.length, 'open position')} held`,
       icon: Wallet,
       iconClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
     },
     {
       label: 'Current value',
-      value: formatCurrency(current.value, currency),
+      value: formatWhole(current.value, currency),
       hint: currentHint,
       icon: ChartLine,
       iconClass: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
     },
     {
       label: 'Realised P&L',
-      value: formatCurrency(portfolio.totalRealizedPnl, currency),
-      hint: `${formatCurrency(portfolio.totalProceeds, currency)} in proceeds`,
+      value: formatWhole(portfolio.totalRealizedPnl, currency),
+      hint: `${formatWhole(portfolio.totalProceeds, currency)} in proceeds`,
       icon: RealizedIcon,
       iconClass: realizedPositive
         ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
@@ -84,7 +84,7 @@ export function SummaryCards({ portfolio, cashTotal, cashAccounts, currency, pri
     },
     {
       label: 'Cash',
-      value: formatCurrency(cashTotal, currency),
+      value: formatWhole(cashTotal, currency),
       hint: `Across ${pluralize(cashAccounts, 'account')}`,
       icon: Banknote,
       iconClass: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
