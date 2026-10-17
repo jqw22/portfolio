@@ -36,6 +36,7 @@ function currentValue(portfolio: PortfolioSummary, prices: Record<string, Resolv
   return {
     value: total.marketValue + (portfolio.totalCostBasis - total.costBasis),
     gain: total.gain,
+    costBasis: total.costBasis,
     priced: total.priced,
     missing: total.missing,
   };
@@ -51,7 +52,18 @@ export function SummaryCards({ portfolio, cashTotal, cashAccounts, currency, pri
         : 'No open positions'
       : current.missing > 0
         ? `${pluralize(current.missing, 'position')} without a price, at cost`
-        : `${gainSign}${formatWhole(current.gain, currency)} unrealised`;
+        : 'At latest prices';
+  const unrealisedPositive = current.gain >= 0;
+  const UnrealisedIcon = unrealisedPositive ? TrendingUp : TrendingDown;
+  const gainPercent = current.costBasis > 0 ? (current.gain / current.costBasis) * 100 : 0;
+  const unrealisedHint =
+    current.priced === 0
+      ? current.missing > 0
+        ? 'No prices yet'
+        : 'No open positions'
+      : current.missing > 0
+        ? `${pluralize(current.missing, 'position')} without a price, not counted`
+        : `${gainSign}${gainPercent.toFixed(2)}% on cost`;
   const realizedPositive = portfolio.totalRealizedPnl >= 0;
   const RealizedIcon = realizedPositive ? TrendingUp : TrendingDown;
 
@@ -69,6 +81,24 @@ export function SummaryCards({ portfolio, cashTotal, cashAccounts, currency, pri
       hint: currentHint,
       icon: ChartLine,
       iconClass: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
+    },
+    {
+      label: 'Unrealised gain',
+      value: `${gainSign}${formatWhole(current.gain, currency)}`,
+      hint: unrealisedHint,
+      icon: UnrealisedIcon,
+      iconClass:
+        current.priced === 0
+          ? 'bg-muted text-muted-foreground'
+          : unrealisedPositive
+            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
+      valueClass:
+        current.priced === 0
+          ? undefined
+          : unrealisedPositive
+            ? 'text-emerald-600 dark:text-emerald-400'
+            : 'text-rose-600 dark:text-rose-400',
     },
     {
       label: 'Realised P&L',
@@ -93,7 +123,7 @@ export function SummaryCards({ portfolio, cashTotal, cashAccounts, currency, pri
   ];
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       {items.map((item) => (
         <Card key={item.label} className="gap-0 py-0">
           <CardContent className="flex flex-col gap-4 p-5">
