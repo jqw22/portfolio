@@ -4,6 +4,7 @@ import { LineChart, Plus, RefreshCw, Wallet } from 'lucide-react';
 
 import { LoginArea } from '@/components/auth/LoginArea';
 import { AccountsDialog } from '@/components/ledger/AccountsDialog';
+import { AnalysisTable } from '@/components/ledger/AnalysisTable';
 import { AppHeader } from '@/components/ledger/AppHeader';
 import { DataMenu } from '@/components/ledger/DataMenu';
 import { EmptyState } from '@/components/ledger/EmptyState';
@@ -19,6 +20,7 @@ import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { usePrices } from '@/hooks/usePrices';
 import { useStockTransactions } from '@/hooks/useStockTransactions';
 import { useToast } from '@/hooks/useToast';
+import { summariseByAccount, summariseByLabel } from '@/lib/analysis';
 import { cashBalanceList, newCashShortfalls, type CashBalance } from '@/lib/cash';
 import { csvToTransactions } from '@/lib/csv';
 import { DEFAULT_CURRENCY } from '@/lib/currency';
@@ -159,6 +161,14 @@ export default function Index() {
     isRefreshing,
     refresh: refreshPrices,
   } = usePrices(openSymbols, currency);
+  const accountSummary = useMemo(
+    () => summariseByAccount(portfolio.holdings, cashBalances, accounts, prices),
+    [portfolio.holdings, cashBalances, accounts, prices],
+  );
+  const labelSummary = useMemo(
+    () => summariseByLabel(portfolio.holdings, transactions, cashBalances, labels, prices),
+    [portfolio.holdings, transactions, cashBalances, labels, prices],
+  );
 
   /** Pull the ledger from relays (when signed in) and fetch the latest prices. */
   const handleRefresh = async () => {
@@ -374,6 +384,7 @@ export default function Index() {
                 <TabsList>
                   <TabsTrigger value="holdings">Holdings</TabsTrigger>
                   <TabsTrigger value="transactions">Transactions</TabsTrigger>
+                  <TabsTrigger value="analysis">Analysis</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="holdings" className="mt-4 space-y-6">
@@ -449,6 +460,25 @@ export default function Index() {
                     onEdit={openEdit}
                     onEditCash={openEditCash}
                     onDelete={handleDelete}
+                  />
+                </TabsContent>
+
+                <TabsContent value="analysis" className="mt-4 space-y-6">
+                  <AnalysisTable
+                    title="By account"
+                    description="Each account's positions and cash. Realised P&L includes closed positions; unpriced holdings count at cost."
+                    groupHeading="Account"
+                    unnamedLabel="No account"
+                    summary={accountSummary}
+                    currency={currency}
+                  />
+                  <AnalysisTable
+                    title="By label"
+                    description="Each position counts under the label of its latest labelled trade. Cash has no label, so it gets its own row."
+                    groupHeading="Label"
+                    unnamedLabel="Unlabelled"
+                    summary={labelSummary}
+                    currency={currency}
                   />
                 </TabsContent>
               </Tabs>
