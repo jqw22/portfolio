@@ -204,17 +204,19 @@ export function usePrices(symbols: string[], currency: string) {
   const fetchOne = useCallback(async (symbol: string, using: PriceSettings): Promise<Quote> => {
     const plans = planQuotes(symbol, using);
     if (plans.length === 0) throw new Error('Add an API key that covers this symbol.');
-    let lastError: unknown;
+    // Report every source's failure, so it's clear which step went wrong.
+    const failures: string[] = [];
     for (const plan of plans) {
       try {
         const quote = await fetchQuote(plan, using);
         setCache((prev) => ({ ...prev, quotes: { ...prev.quotes, [symbol]: quote } }));
         return quote;
       } catch (error) {
-        lastError = error;
+        const message = error instanceof Error ? error.message : 'Failed to fetch.';
+        failures.push(message.startsWith(PROVIDER_NAMES[plan.provider]) ? message : `${PROVIDER_NAMES[plan.provider]}: ${message}`);
       }
     }
-    throw lastError;
+    throw new Error(failures.join(' '));
   }, []);
 
   // Refresh once on open when the last refresh is stale. Exchange rates need no key.
