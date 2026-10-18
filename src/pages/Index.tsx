@@ -184,27 +184,44 @@ export default function Index() {
     // Without a key only exchange rates are fetched; that's not worth a toast.
     if (!hasKey && !result.fxFailed) return;
     const problems: string[] = [];
-    if (result.rateLimited) problems.push('The price source limit was reached; try again later.');
+    if (result.rateLimited) {
+      problems.push(
+        priceSettings.eodhdKey
+          ? 'The daily price limits were reached; try again tomorrow.'
+          : 'The daily price limit was reached. Add an EODHD key in Prices for a second allowance, or try again tomorrow.',
+      );
+    }
     if (result.failed.length > 0 && !result.rateLimited) {
       problems.push(`No price for ${result.failed.map((failure) => failure.symbol).join(', ')}.`);
     }
     if (hasKey && result.needKey.length > 0) problems.push('Add an API key in Prices, or enter prices by hand.');
     if (result.fxFailed) problems.push('Exchange rates could not be updated.');
+    const kept =
+      result.skipped > 0
+        ? [`${result.skipped} price${result.skipped === 1 ? ' was' : 's were'} fetched in the last 4 hours and kept.`]
+        : [];
     toast({
-      title: result.updated > 0 ? `Updated ${result.updated} price${result.updated === 1 ? '' : 's'}` : 'No prices updated',
-      description: problems.length > 0 ? problems.join(' ') : undefined,
+      title:
+        result.updated > 0
+          ? `Updated ${result.updated} price${result.updated === 1 ? '' : 's'}`
+          : result.skipped > 0 && problems.length === 0
+            ? 'Prices are up to date'
+            : 'No prices updated',
+      description: [...problems, ...kept].join(' ') || undefined,
       variant: result.updated === 0 && problems.length > 0 ? 'destructive' : undefined,
     });
   };
 
   const handleSavePrices = (next: typeof priceSettings) => {
     const keysChanged =
-      next.alphaVantageKey !== priceSettings.alphaVantageKey || next.finnhubKey !== priceSettings.finnhubKey;
+      next.alphaVantageKey !== priceSettings.alphaVantageKey ||
+      next.finnhubKey !== priceSettings.finnhubKey ||
+      next.eodhdKey !== priceSettings.eodhdKey;
     setPriceSettings(next);
     toast({
       title: 'Price settings saved',
       description:
-        keysChanged && (next.alphaVantageKey || next.finnhubKey) ? 'Press Refresh to fetch prices with your key.' : undefined,
+        keysChanged && (next.alphaVantageKey || next.finnhubKey || next.eodhdKey) ? 'Press Refresh to fetch prices with your key.' : undefined,
     });
   };
 
