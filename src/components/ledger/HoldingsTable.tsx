@@ -15,7 +15,7 @@ import { LabelBadge } from '@/components/ledger/LabelBadge';
 import { cn } from '@/lib/utils';
 import type { CashBalance } from '@/lib/cash';
 import { formatCurrency, formatWhole, formatPercent, formatQuantity, holdingDisplayName, type Holding } from '@/lib/portfolio';
-import { isPence, totalUnrealised, unrealisedGain, type ResolvedPrice, type UnrealisedTotal } from '@/lib/prices';
+import { formatFetchedOn, isPence, totalUnrealised, unrealisedGain, type ResolvedPrice, type UnrealisedTotal } from '@/lib/prices';
 
 interface HoldingsTableProps {
   holdings: Holding[];
@@ -58,12 +58,6 @@ function formatNativePrice(value: number, currency: string): string {
     return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value)}p`;
   }
   return formatCurrency(value, currency, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
-}
-
-/** The day a price was fetched, in UK style, e.g. `18 Oct 2026`. */
-function formatFetchedOn(updatedAt: number): string {
-  if (!updatedAt) return '';
-  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(updatedAt));
 }
 
 function priceTitle(price: ResolvedPrice): string {

@@ -9,6 +9,7 @@ import {
   type FxRates,
   type PriceSettings,
   type Quote,
+  type QuotePlan,
   type ResolvedPrice,
 } from '@/lib/prices';
 
@@ -52,6 +53,21 @@ function save(key: string, value: unknown) {
   } catch (error) {
     console.warn(`Failed to save ${key}:`, error);
   }
+}
+
+async function fetchQuote(plan: QuotePlan, settings: PriceSettings, signal?: AbortSignal): Promise<Quote> {
+  const { price, asOf } =
+    plan.provider === 'finnhub'
+      ? await fetchFinnhubQuote(plan.quoteSymbol, settings.finnhubKey, signal)
+      : await fetchAlphaVantageQuote(plan.quoteSymbol, settings.alphaVantageKey, signal);
+  return {
+    price,
+    currency: plan.currency,
+    asOf,
+    fetchedAt: Date.now(),
+    provider: plan.provider,
+    quoteSymbol: plan.quoteSymbol,
+  };
 }
 
 function wait(ms: number, signal: AbortSignal) {
@@ -120,18 +136,7 @@ export function usePrices(symbols: string[], currency: string) {
             alphaVantageCalls += 1;
           }
           try {
-            const { price, asOf } =
-              plan.provider === 'finnhub'
-                ? await fetchFinnhubQuote(plan.quoteSymbol, settings.finnhubKey, signal)
-                : await fetchAlphaVantageQuote(plan.quoteSymbol, settings.alphaVantageKey, signal);
-            const quote: Quote = {
-              price,
-              currency: plan.currency,
-              asOf,
-              fetchedAt: Date.now(),
-              provider: plan.provider,
-              quoteSymbol: plan.quoteSymbol,
-            };
+            const quote = await fetchQuote(plan, settings, signal);
             setCache((prev) => ({ ...prev, quotes: { ...prev.quotes, [symbol]: quote } }));
             result.updated += 1;
           } catch (error) {
@@ -155,6 +160,19 @@ export function usePrices(symbols: string[], currency: string) {
     },
     [settings, symbols],
   );
+
+  /**
+   * Fetch one symbol's price even when it has a manual price, using `using`
+   * (e.g. unsaved settings from the Prices dialog). The quote is cached; the
+   * manual price is left for the caller to clear.
+   */
+  const fetchOne = useCallback(async (symbol: string, using: PriceSettings): Promise<Quote> => {
+    const plan = planQuote(symbol, using);
+    if (!plan) throw new Error('Add an API key that covers this symbol.');
+    const quote = await fetchQuote(plan, using);
+    setCache((prev) => ({ ...prev, quotes: { ...prev.quotes, [symbol]: quote } }));
+    return quote;
+  }, []);
 
   // Refresh once on open when the last refresh is stale. Exchange rates need no key.
   const hasKey = Boolean(settings.alphaVantageKey.trim() || settings.finnhubKey.trim());
@@ -196,5 +214,6 @@ export function usePrices(symbols: string[], currency: string) {
     hasKey,
     isRefreshing,
     refresh,
+    fetchOne,
   };
 }
