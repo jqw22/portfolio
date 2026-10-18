@@ -282,6 +282,41 @@ function compareHoldings(a: Holding, b: Holding): number {
   );
 }
 
+export type HoldingSortKey = 'stock' | 'label';
+
+/** How a holdings table is ordered: by stock name or by label, either way round. */
+export interface HoldingSort {
+  key: HoldingSortKey;
+  direction: 'asc' | 'desc';
+}
+
+export const DEFAULT_HOLDING_SORT: HoldingSort = { key: 'stock', direction: 'asc' };
+
+export function isHoldingSort(value: unknown): value is HoldingSort {
+  if (!value || typeof value !== 'object') return false;
+  const { key, direction } = value as Record<string, unknown>;
+  return (key === 'stock' || key === 'label') && (direction === 'asc' || direction === 'desc');
+}
+
+/**
+ * Order holdings for display. Label order compares each holding's labels joined together,
+ * keeps unlabelled holdings last either way round, and breaks ties by stock name.
+ */
+export function sortHoldings(holdings: Holding[], sort: HoldingSort): Holding[] {
+  const sign = sort.direction === 'asc' ? 1 : -1;
+  return [...holdings].sort((a, b) => {
+    if (sort.key === 'stock') return sign * compareHoldings(a, b);
+    const left = a.labels.join(', ');
+    const right = b.labels.join(', ');
+    if (!left || !right) {
+      if (left !== right) return left ? -1 : 1;
+      return compareHoldings(a, b);
+    }
+    const byLabel = left.localeCompare(right, undefined, { sensitivity: 'base', numeric: true });
+    return sign * byLabel || compareHoldings(a, b);
+  });
+}
+
 /**
  * Compute positions, cost basis and realized P&L using the average-cost method.
  *

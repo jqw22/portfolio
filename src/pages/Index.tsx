@@ -26,11 +26,14 @@ import { csvToTransactions } from '@/lib/csv';
 import { DEFAULT_CURRENCY } from '@/lib/currency';
 import {
   computePortfolio,
+  DEFAULT_HOLDING_SORT,
   formatCurrency,
+  isHoldingSort,
   formatDate,
   type CashMovement,
   type CashMovementInput,
   type Holding,
+  type HoldingSort,
   type Transaction,
   type TransactionInput,
 } from '@/lib/portfolio';
@@ -130,6 +133,8 @@ export default function Index() {
   const { toast } = useToast();
 
   const [currency, setCurrency] = useLocalStorage('stock-ledger:currency', DEFAULT_CURRENCY);
+  const [storedSort, setHoldingSort] = useLocalStorage<HoldingSort>('stock-ledger:holdings-sort', DEFAULT_HOLDING_SORT);
+  const holdingSort = isHoldingSort(storedSort) ? storedSort : DEFAULT_HOLDING_SORT;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [editingCash, setEditingCash] = useState<CashMovement | null>(null);
@@ -429,6 +434,8 @@ export default function Index() {
                         showAccount={false}
                         footerLabel="Subtotal"
                         showFooter
+                        sort={holdingSort}
+                        onSortChange={setHoldingSort}
                       />
                     ))}
                     {accountPositions.length > 1 ? (

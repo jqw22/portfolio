@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,7 +15,17 @@ import {
 import { LabelBadge } from '@/components/ledger/LabelBadge';
 import { cn } from '@/lib/utils';
 import type { CashBalance } from '@/lib/cash';
-import { formatCurrency, formatWhole, formatPercent, formatQuantity, holdingDisplayName, type Holding } from '@/lib/portfolio';
+import {
+  formatCurrency,
+  formatWhole,
+  formatPercent,
+  formatQuantity,
+  holdingDisplayName,
+  sortHoldings,
+  type Holding,
+  type HoldingSort,
+  type HoldingSortKey,
+} from '@/lib/portfolio';
 import { formatFetchedOn, isPence, totalUnrealised, unrealisedGain, type ResolvedPrice, type UnrealisedTotal } from '@/lib/prices';
 
 interface HoldingsTableProps {
@@ -33,6 +44,49 @@ interface HoldingsTableProps {
   prices?: Record<string, ResolvedPrice | null>;
   /** Controls shown on the right of the card header. */
   actions?: ReactNode;
+  /** Row order. When given with `onSortChange`, the Stock and Label headings sort the table. */
+  sort?: HoldingSort;
+  onSortChange?: (sort: HoldingSort) => void;
+}
+
+interface SortableHeadProps {
+  label: string;
+  sortKey: HoldingSortKey;
+  sort?: HoldingSort;
+  onSortChange?: (sort: HoldingSort) => void;
+  className?: string;
+}
+
+/** A column heading that sorts by its column: ascending first, then flips on each click. */
+function SortableHead({ label, sortKey, sort, onSortChange, className }: SortableHeadProps) {
+  if (!sort || !onSortChange) return <TableHead className={className}>{label}</TableHead>;
+  const active = sort.key === sortKey;
+  const next: HoldingSort = {
+    key: sortKey,
+    direction: active && sort.direction === 'asc' ? 'desc' : 'asc',
+  };
+  return (
+    <TableHead
+      className={className}
+      aria-sort={active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <button
+        type="button"
+        onClick={() => onSortChange(next)}
+        className={cn(
+          'inline-flex items-center gap-1 rounded-sm text-inherit transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+          active ? 'text-foreground' : 'text-muted-foreground',
+        )}
+      >
+        {label}
+        {active ? (
+          sort.direction === 'asc' ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />
+        ) : (
+          <ArrowUpDown className="size-3 opacity-40" />
+        )}
+      </button>
+    </TableHead>
+  );
 }
 
 /**
@@ -97,7 +151,10 @@ export function HoldingsTable({
   cashBalances = [],
   prices,
   actions,
+  sort,
+  onSortChange,
 }: HoldingsTableProps) {
+  const rows = sort ? sortHoldings(holdings, sort) : holdings;
   const showMarket = prices !== undefined;
   const unrealisedTotal = prices ? totalUnrealised(holdings, prices) : null;
   const totalCash = cashBalances.reduce((sum, cash) => sum + cash.balance, 0);
@@ -126,8 +183,14 @@ export function HoldingsTable({
             <TableRow className="hover:bg-transparent">
               {showAccount ? <TableHead className="w-36 pl-6">Account</TableHead> : null}
               {/* Fixed widths keep stock, label and shares together; the money columns share the rest. */}
-              <TableHead className={cn('w-44', !showAccount && 'w-48 pl-6')}>Stock</TableHead>
-              <TableHead className="w-32">Label</TableHead>
+              <SortableHead
+                label="Stock"
+                sortKey="stock"
+                sort={sort}
+                onSortChange={onSortChange}
+                className={cn('w-44', !showAccount && 'w-48 pl-6')}
+              />
+              <SortableHead label="Label" sortKey="label" sort={sort} onSortChange={onSortChange} className="w-32" />
               <TableHead className="w-24 text-right">Shares</TableHead>
               <TableHead className="text-right">Avg cost</TableHead>
               <TableHead className="text-right">Cost basis</TableHead>
@@ -138,7 +201,7 @@ export function HoldingsTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {holdings.map((holding) => {
+            {rows.map((holding) => {
               const isOpen = holding.quantity > 0;
               const positive = holding.realizedPnl >= 0;
               const price = prices?.[holding.symbol];
