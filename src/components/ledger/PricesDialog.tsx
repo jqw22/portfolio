@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Loader2, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -14,8 +14,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CURRENCIES } from '@/lib/currency';
-import { formatDate, parseNumber } from '@/lib/portfolio';
+import { parseNumber } from '@/lib/portfolio';
 import {
+  formatFetchedOn,
   quoteCurrencyFor,
   quoteSymbolFor,
   type PriceSettings,
@@ -38,6 +39,8 @@ interface PricesDialogProps {
   settings: PriceSettings;
   quotes: Record<string, Quote>;
   onSave: (settings: PriceSettings) => void;
+  /** Fetch one symbol's price now, even if it has a manual price. */
+  onFetch: (symbol: string, settings: PriceSettings) => Promise<Quote>;
 }
 
 export function PricesDialog({ open, onOpenChange, ...props }: PricesDialogProps) {
@@ -73,11 +76,21 @@ function toDraft(own: SymbolPriceSettings): SymbolDraft {
   };
 }
 
+/** The quote settings for a symbol (look-up symbol and currency) from its draft. */
+function lookupSettings(draft: SymbolDraft): SymbolPriceSettings {
+  const own: SymbolPriceSettings = {};
+  const quoteSymbol = draft.quoteSymbol.trim().toUpperCase();
+  if (quoteSymbol) own.quoteSymbol = quoteSymbol;
+  if (draft.quoteCurrency !== AUTO) own.quoteCurrency = draft.quoteCurrency;
+  return own;
+}
+
 function PricesForm({
   symbols,
   settings,
   quotes,
   onSave,
+  onFetch,
   onDone,
 }: Omit<PricesDialogProps, 'open' | 'onOpenChange'> & { onDone: () => void }) {
   const [alphaVantageKey, setAlphaVantageKey] = useState(settings.alphaVantageKey);
@@ -86,10 +99,36 @@ function PricesForm({
     Object.fromEntries(symbols.map((symbol) => [symbol, toDraft(settings.symbols[symbol] ?? {})])),
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [fetching, setFetching] = useState<Record<string, boolean>>({});
+  const [notes, setNotes] = useState<Record<string, string>>({});
 
   const update = (symbol: string, patch: Partial<SymbolDraft>) => {
     setDrafts((prev) => ({ ...prev, [symbol]: { ...prev[symbol], ...patch } }));
     setErrors((prev) => ({ ...prev, [symbol]: '' }));
+  };
+
+  const handleFetch = async (symbol: string) => {
+    const draft = drafts[symbol];
+    const hadManual = Boolean(draft.manualPrice.trim());
+    setFetching((prev) => ({ ...prev, [symbol]: true }));
+    setErrors((prev) => ({ ...prev, [symbol]: '' }));
+    setNotes((prev) => ({ ...prev, [symbol]: '' }));
+    try {
+      // Use the keys and look-up as they are in the form, saved or not.
+      await onFetch(symbol, {
+        alphaVantageKey: alphaVantageKey.trim(),
+        finnhubKey: finnhubKey.trim(),
+        symbols: { [symbol]: lookupSettings(draft) },
+      });
+      if (hadManual) {
+        setDrafts((prev) => ({ ...prev, [symbol]: { ...prev[symbol], manualPrice: '', manualCurrency: AUTO } }));
+        setNotes((prev) => ({ ...prev, [symbol]: 'Manual price cleared. Save to use the fetched price.' }));
+      }
+    } catch (error) {
+      setErrors((prev) => ({ ...prev, [symbol]: error instanceof Error ? error.message : 'Failed to fetch.' }));
+    } finally {
+      setFetching((prev) => ({ ...prev, [symbol]: false }));
+    }
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -101,10 +140,7 @@ function PricesForm({
     for (const symbol of symbols) {
       const draft = drafts[symbol];
       const previous = settings.symbols[symbol] ?? {};
-      const own: SymbolPriceSettings = {};
-      const quoteSymbol = draft.quoteSymbol.trim().toUpperCase();
-      if (quoteSymbol) own.quoteSymbol = quoteSymbol;
-      if (draft.quoteCurrency !== AUTO) own.quoteCurrency = draft.quoteCurrency;
+      const own = lookupSettings(draft);
       if (draft.manualPrice.trim()) {
         const price = parseNumber(draft.manualPrice);
         if (price === null || price < 0) {
@@ -192,7 +228,7 @@ function PricesForm({
           <h3 className="text-sm font-medium">Symbols</h3>
           <p className="text-xs text-muted-foreground">
             London tickers end in .LON (or .L), Xetra .DEX, Paris .PAR, Amsterdam .AMS. A manual price always wins
-            over a fetched one; clear it to go back to fetching.
+            over a fetched one; Fetch price gets the latest price and clears it.
           </p>
         </div>
         {symbols.length === 0 ? (
@@ -211,13 +247,26 @@ function PricesForm({
               const id = `price-${symbol}`;
               return (
                 <li key={symbol} className="rounded-lg border p-4">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <p className="font-semibold">{symbol}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {quote
-                        ? `Last fetched ${quote.price} ${quote.currency}${quote.asOf ? ` (${formatDate(quote.asOf.slice(0, 10))})` : ''}`
-                        : 'Not fetched yet'}
-                    </p>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold">{symbol}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {quote
+                          ? `Last fetched ${quote.price} ${quote.currency} on ${formatFetchedOn(quote.fetchedAt)}`
+                          : 'Not fetched yet'}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleFetch(symbol)}
+                      disabled={fetching[symbol]}
+                      className="shrink-0"
+                    >
+                      {fetching[symbol] ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                      Fetch price
+                    </Button>
                   </div>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <div className="space-y-1.5">
@@ -287,6 +336,11 @@ function PricesForm({
                     </div>
                   </div>
                   {errors[symbol] ? <p className="mt-2 text-xs text-destructive">{errors[symbol]}</p> : null}
+                  {notes[symbol] ? (
+                    <p className="mt-2 text-xs text-muted-foreground" role="status">
+                      {notes[symbol]}
+                    </p>
+                  ) : null}
                 </li>
               );
             })}

@@ -56,6 +56,12 @@ export interface FxRates {
   fetchedAt: number;
 }
 
+/** The day a price was fetched, in UK style, e.g. `18 Oct 2026`. */
+export function formatFetchedOn(updatedAt: number): string {
+  if (!updatedAt) return '';
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(updatedAt));
+}
+
 /** What to show for a symbol after picking manual vs fetched and converting. */
 export interface ResolvedPrice {
   /** Price in the ledger currency, or `null` when there is no exchange rate for it. */

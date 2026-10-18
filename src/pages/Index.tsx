@@ -165,6 +165,7 @@ export default function Index() {
     hasKey,
     isRefreshing,
     refresh: refreshPrices,
+    fetchOne: fetchPrice,
   } = usePrices(openSymbols, currency);
   const accountSummary = useMemo(
     () => summariseByAccount(portfolio.holdings, cashBalances, accounts, prices),
@@ -520,6 +521,7 @@ export default function Index() {
         settings={priceSettings}
         quotes={quotes}
         onSave={handleSavePrices}
+        onFetch={fetchPrice}
       />
 
       <AccountsDialog
