@@ -14,8 +14,8 @@ import {
 import { LabelBadge } from '@/components/ledger/LabelBadge';
 import { cn } from '@/lib/utils';
 import type { CashBalance } from '@/lib/cash';
-import { formatCurrency, formatDate, formatWhole, formatPercent, formatQuantity, holdingDisplayName, type Holding } from '@/lib/portfolio';
-import { isPence, totalUnrealised, unrealisedGain, type ResolvedPrice, type UnrealisedTotal } from '@/lib/prices';
+import { formatCurrency, formatWhole, formatPercent, formatQuantity, holdingDisplayName, type Holding } from '@/lib/portfolio';
+import { formatFetchedOn, isPence, totalUnrealised, unrealisedGain, type ResolvedPrice, type UnrealisedTotal } from '@/lib/prices';
 
 interface HoldingsTableProps {
   holdings: Holding[];
@@ -60,18 +60,6 @@ function formatNativePrice(value: number, currency: string): string {
   return formatCurrency(value, currency, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 }
 
-/** When a price is from: a date for daily quotes, a time for today's intraday ones. */
-function formatAsOf(asOf: string): string {
-  if (!asOf) return '';
-  if (/^\d{4}-\d{2}-\d{2}$/.test(asOf)) return formatDate(asOf);
-  const date = new Date(asOf);
-  if (Number.isNaN(date.getTime())) return asOf;
-  if (date.toDateString() === new Date().toDateString()) {
-    return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(date);
-  }
-  return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).format(date);
-}
-
 function priceTitle(price: ResolvedPrice): string {
   const quoted = formatNativePrice(price.nativePrice, price.nativeCurrency);
   const when = price.updatedAt ? new Date(price.updatedAt).toLocaleString() : 'unknown';
@@ -82,8 +70,6 @@ function LatestPriceCell({ price, currency }: { price: ResolvedPrice | null | un
   if (!price) {
     return <span className="text-muted-foreground">No price</span>;
   }
-  const showNative = price.price === null || price.nativeCurrency.toUpperCase() !== currency.toUpperCase();
-  const when = formatAsOf(price.asOf);
   return (
     <div title={priceTitle(price)}>
       <span className="font-medium">
@@ -92,9 +78,9 @@ function LatestPriceCell({ price, currency }: { price: ResolvedPrice | null | un
       <p className="mt-0.5 text-xs whitespace-normal text-muted-foreground">
         {price.price === null
           ? `No ${currency} rate`
-          : [showNative ? formatNativePrice(price.nativePrice, price.nativeCurrency) : null, price.source === 'manual' ? 'Manual' : null, when]
-              .filter(Boolean)
-              .join(' · ')}
+          : price.source === 'manual'
+            ? 'Manual'
+            : formatFetchedOn(price.updatedAt)}
       </p>
     </div>
   );
