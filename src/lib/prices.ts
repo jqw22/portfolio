@@ -9,7 +9,7 @@ import type { Holding } from './portfolio';
 
 const EPSILON = 1e-9;
 
-export type PriceProviderId = 'alphavantage' | 'finnhub';
+export type PriceProviderId = 'alphavantage' | 'finnhub' | 'eodhd';
 
 /** How one ledger symbol is priced. Every field is optional. */
 export interface SymbolPriceSettings {
@@ -29,10 +29,11 @@ export interface SymbolPriceSettings {
 export interface PriceSettings {
   alphaVantageKey: string;
   finnhubKey: string;
+  eodhdKey: string;
   symbols: Record<string, SymbolPriceSettings>;
 }
 
-export const DEFAULT_PRICE_SETTINGS: PriceSettings = { alphaVantageKey: '', finnhubKey: '', symbols: {} };
+export const DEFAULT_PRICE_SETTINGS: PriceSettings = { alphaVantageKey: '', finnhubKey: '', eodhdKey: '', symbols: {} };
 
 /** A price fetched from a source, in the currency the source quotes. */
 export interface Quote {
@@ -84,6 +85,18 @@ const SUFFIX_TO_ALPHA_VANTAGE: Record<string, string> = {
   PA: 'PAR',
   AS: 'AMS',
   TO: 'TRT',
+};
+
+/** Alpha Vantage (and Yahoo) suffixes whose EODHD exchange code differs; others are the same. */
+const SUFFIX_TO_EODHD: Record<string, string> = {
+  LON: 'LSE',
+  L: 'LSE',
+  DEX: 'XETRA',
+  DE: 'XETRA',
+  FRK: 'F',
+  PAR: 'PA',
+  AMS: 'AS',
+  TRT: 'TO',
 };
 
 /** Currency each exchange suffix quotes in (Alpha Vantage and Yahoo spellings). */
@@ -139,26 +152,35 @@ export function isUsSymbol(quoteSymbol: string): boolean {
   return splitSuffix(quoteSymbol)[1] === undefined;
 }
 
+/** The symbol to ask EODHD for, e.g. `VOD.LON` → `VOD.LSE`, `AAPL` → `AAPL.US`. */
+export function eodhdSymbolFor(quoteSymbol: string): string {
+  const [base, suffix] = splitSuffix(quoteSymbol);
+  if (!suffix) return `${base}.US`;
+  return `${base}.${SUFFIX_TO_EODHD[suffix] ?? suffix}`;
+}
+
 export interface QuotePlan {
   provider: PriceProviderId;
+  /** The symbol in the provider's own spelling. */
   quoteSymbol: string;
   currency: string;
 }
 
 /**
- * Decide which source to ask for a symbol, or `null` when no key can price it.
- * US tickers go to Finnhub when its key is set (it allows far more calls);
- * everything else goes to Alpha Vantage.
+ * The sources to try for a symbol, best first; empty when no key can price it.
+ * US tickers go to Finnhub first when its key is set (it allows far more
+ * calls), then Alpha Vantage, then EODHD as the fallback for when Alpha
+ * Vantage's daily allowance runs out or it doesn't know the symbol.
  */
-export function planQuote(symbol: string, settings: PriceSettings): QuotePlan | null {
+export function planQuotes(symbol: string, settings: PriceSettings): QuotePlan[] {
   const own = settings.symbols[symbol] ?? {};
   const quoteSymbol = own.quoteSymbol?.trim().toUpperCase() || quoteSymbolFor(symbol);
   const currency = own.quoteCurrency || quoteCurrencyFor(quoteSymbol);
-  if (settings.finnhubKey.trim() && isUsSymbol(quoteSymbol)) {
-    return { provider: 'finnhub', quoteSymbol, currency };
-  }
-  if (settings.alphaVantageKey.trim()) return { provider: 'alphavantage', quoteSymbol, currency };
-  return null;
+  const plans: QuotePlan[] = [];
+  if (settings.finnhubKey.trim() && isUsSymbol(quoteSymbol)) plans.push({ provider: 'finnhub', quoteSymbol, currency });
+  if (settings.alphaVantageKey.trim()) plans.push({ provider: 'alphavantage', quoteSymbol, currency });
+  if (settings.eodhdKey.trim()) plans.push({ provider: 'eodhd', quoteSymbol: eodhdSymbolFor(quoteSymbol), currency });
+  return plans;
 }
 
 /** Whether a currency code means pence sterling (London prices are quoted in pence). */
@@ -330,6 +352,18 @@ export function parseFinnhubQuote(json: unknown): { price: number; asOf: string 
   const price = Number(record.c);
   if (!Number.isFinite(price) || price <= 0) throw new PriceSourceError('Symbol not found.');
   const time = Number(record.t);
+  return { price, asOf: Number.isFinite(time) && time > 0 ? new Date(time * 1000).toISOString() : '' };
+}
+
+/** Read an EODHD `/real-time` response (`close` is the latest delayed price, `timestamp` a unix time). */
+export function parseEodhdQuote(json: unknown): { price: number; asOf: string } {
+  const record = asRecord(json);
+  if (!record) throw new PriceSourceError('Unexpected response from EODHD.');
+  // Outside trading hours `close` can be "NA" while the previous close is known.
+  const close = Number(record.close);
+  const price = Number.isFinite(close) && close > 0 ? close : Number(record.previousClose);
+  if (!Number.isFinite(price) || price <= 0) throw new PriceSourceError('Symbol not found.');
+  const time = Number(record.timestamp);
   return { price, asOf: Number.isFinite(time) && time > 0 ? new Date(time * 1000).toISOString() : '' };
 }
 

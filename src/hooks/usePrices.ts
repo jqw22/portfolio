@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { fetchAlphaVantageQuote, fetchFinnhubQuote, fetchFxRates } from '@/lib/priceSources';
+import { fetchAlphaVantageQuote, fetchEodhdQuote, fetchFinnhubQuote, fetchFxRates } from '@/lib/priceSources';
 import {
   DEFAULT_PRICE_SETTINGS,
-  planQuote,
+  planQuotes,
   PriceSourceError,
   resolvePrice,
   type FxRates,
@@ -18,6 +18,8 @@ const CACHE_KEY = 'stock-ledger:price-cache';
 
 /** Prices and rates older than this are refreshed when the app opens. */
 const STALE_MS = 12 * 60 * 60 * 1000;
+/** Refresh skips prices fetched more recently than this, to save the daily allowances. */
+const FRESH_MS = 4 * 60 * 60 * 1000;
 /** Alpha Vantage's free tier refuses bursts, so space its calls out. */
 const ALPHA_VANTAGE_GAP_MS = 1500;
 
@@ -31,6 +33,8 @@ const EMPTY_CACHE: PriceCache = { quotes: {}, fx: null, lastRefreshAt: 0 };
 
 export interface RefreshResult {
   updated: number;
+  /** Symbols skipped because their price was fetched in the last few hours. */
+  skipped: number;
   failed: { symbol: string; message: string }[];
   /** Symbols skipped because no key covers them. */
   needKey: string[];
@@ -55,11 +59,25 @@ function save(key: string, value: unknown) {
   }
 }
 
+const PROVIDER_NAMES: Record<QuotePlan['provider'], string> = {
+  alphavantage: 'Alpha Vantage',
+  finnhub: 'Finnhub',
+  eodhd: 'EODHD',
+};
+
+function callProvider(plan: QuotePlan, settings: PriceSettings, signal?: AbortSignal) {
+  switch (plan.provider) {
+    case 'finnhub':
+      return fetchFinnhubQuote(plan.quoteSymbol, settings.finnhubKey, signal);
+    case 'eodhd':
+      return fetchEodhdQuote(plan.quoteSymbol, settings.eodhdKey, signal);
+    case 'alphavantage':
+      return fetchAlphaVantageQuote(plan.quoteSymbol, settings.alphaVantageKey, signal);
+  }
+}
+
 async function fetchQuote(plan: QuotePlan, settings: PriceSettings, signal?: AbortSignal): Promise<Quote> {
-  const { price, asOf } =
-    plan.provider === 'finnhub'
-      ? await fetchFinnhubQuote(plan.quoteSymbol, settings.finnhubKey, signal)
-      : await fetchAlphaVantageQuote(plan.quoteSymbol, settings.alphaVantageKey, signal);
+  const { price, asOf } = await callProvider(plan, settings, signal);
   return {
     price,
     currency: plan.currency,
@@ -89,9 +107,13 @@ export function usePrices(symbols: string[], currency: string) {
   const [cache, setCache] = useState<PriceCache>(() => load(CACHE_KEY, EMPTY_CACHE));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const quotesRef = useRef(cache.quotes);
   const autoRef = useRef(false);
 
-  useEffect(() => save(CACHE_KEY, cache), [cache]);
+  useEffect(() => {
+    quotesRef.current = cache.quotes;
+    save(CACHE_KEY, cache);
+  }, [cache]);
 
   const setSettings = useCallback((next: PriceSettings) => {
     setSettingsState(next);
@@ -104,7 +126,7 @@ export function usePrices(symbols: string[], currency: string) {
       const controller = new AbortController();
       abortRef.current = controller;
       const { signal } = controller;
-      const result: RefreshResult = { updated: 0, failed: [], needKey: [], rateLimited: false, fxFailed: false };
+      const result: RefreshResult = { updated: 0, skipped: 0, failed: [], needKey: [], rateLimited: false, fxFailed: false };
       setIsRefreshing(true);
 
       try {
@@ -118,35 +140,48 @@ export function usePrices(symbols: string[], currency: string) {
         }
 
         let alphaVantageCalls = 0;
-        let alphaVantageBlocked = false;
+        /** Sources whose allowance ran out during this refresh. */
+        const blocked = new Set<QuotePlan['provider']>();
+        const now = Date.now();
         for (const symbol of only ?? symbols) {
           if (signal.aborted) return result;
           if (settings.symbols[symbol]?.manualPrice !== undefined) continue;
-          const plan = planQuote(symbol, settings);
-          if (!plan) {
+          const plans = planQuotes(symbol, settings);
+          if (plans.length === 0) {
             result.needKey.push(symbol);
             continue;
           }
-          if (plan.provider === 'alphavantage') {
-            if (alphaVantageBlocked) {
-              result.failed.push({ symbol, message: 'Alpha Vantage daily limit reached.' });
+          const last = quotesRef.current[symbol];
+          if (!only && last && now - last.fetchedAt < FRESH_MS) {
+            result.skipped += 1;
+            continue;
+          }
+          let failure: { message: string; rateLimited: boolean } | null = null;
+          for (const plan of plans) {
+            if (blocked.has(plan.provider)) {
+              failure = { message: `${PROVIDER_NAMES[plan.provider]} daily limit reached.`, rateLimited: true };
               continue;
             }
-            if (alphaVantageCalls > 0) await wait(ALPHA_VANTAGE_GAP_MS, signal);
-            alphaVantageCalls += 1;
-          }
-          try {
-            const quote = await fetchQuote(plan, settings, signal);
-            setCache((prev) => ({ ...prev, quotes: { ...prev.quotes, [symbol]: quote } }));
-            result.updated += 1;
-          } catch (error) {
-            if (signal.aborted) return result;
-            const message = error instanceof Error ? error.message : 'Failed to fetch.';
-            result.failed.push({ symbol, message });
-            if (error instanceof PriceSourceError && error.rateLimited) {
-              result.rateLimited = true;
-              if (plan.provider === 'alphavantage') alphaVantageBlocked = true;
+            if (plan.provider === 'alphavantage') {
+              if (alphaVantageCalls > 0) await wait(ALPHA_VANTAGE_GAP_MS, signal);
+              alphaVantageCalls += 1;
             }
+            try {
+              const quote = await fetchQuote(plan, settings, signal);
+              setCache((prev) => ({ ...prev, quotes: { ...prev.quotes, [symbol]: quote } }));
+              result.updated += 1;
+              failure = null;
+              break;
+            } catch (error) {
+              if (signal.aborted) return result;
+              const rateLimited = error instanceof PriceSourceError && error.rateLimited;
+              if (rateLimited) blocked.add(plan.provider);
+              failure = { message: error instanceof Error ? error.message : 'Failed to fetch.', rateLimited };
+            }
+          }
+          if (failure) {
+            result.failed.push({ symbol, message: failure.message });
+            if (failure.rateLimited) result.rateLimited = true;
           }
         }
         if (!only) setCache((prev) => ({ ...prev, lastRefreshAt: Date.now() }));
@@ -167,15 +202,23 @@ export function usePrices(symbols: string[], currency: string) {
    * manual price is left for the caller to clear.
    */
   const fetchOne = useCallback(async (symbol: string, using: PriceSettings): Promise<Quote> => {
-    const plan = planQuote(symbol, using);
-    if (!plan) throw new Error('Add an API key that covers this symbol.');
-    const quote = await fetchQuote(plan, using);
-    setCache((prev) => ({ ...prev, quotes: { ...prev.quotes, [symbol]: quote } }));
-    return quote;
+    const plans = planQuotes(symbol, using);
+    if (plans.length === 0) throw new Error('Add an API key that covers this symbol.');
+    let lastError: unknown;
+    for (const plan of plans) {
+      try {
+        const quote = await fetchQuote(plan, using);
+        setCache((prev) => ({ ...prev, quotes: { ...prev.quotes, [symbol]: quote } }));
+        return quote;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError;
   }, []);
 
   // Refresh once on open when the last refresh is stale. Exchange rates need no key.
-  const hasKey = Boolean(settings.alphaVantageKey.trim() || settings.finnhubKey.trim());
+  const hasKey = Boolean(settings.alphaVantageKey.trim() || settings.finnhubKey.trim() || settings.eodhdKey.trim());
   useEffect(() => {
     if (autoRef.current || symbols.length === 0) return;
     const now = Date.now();

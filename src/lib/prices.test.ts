@@ -7,7 +7,9 @@ import {
   parseAlphaVantageQuote,
   parseFinnhubQuote,
   parseFxRates,
-  planQuote,
+  eodhdSymbolFor,
+  parseEodhdQuote,
+  planQuotes,
   PriceSourceError,
   quoteCurrencyFor,
   quoteSymbolFor,
@@ -57,11 +59,31 @@ describe('symbols and currencies', () => {
   it('sends US tickers to Finnhub only when its key is set', () => {
     const avOnly = settingsWith({ alphaVantageKey: 'av' });
     const both = settingsWith({ alphaVantageKey: 'av', finnhubKey: 'fh' });
-    expect(planQuote('AAPL', avOnly)?.provider).toBe('alphavantage');
-    expect(planQuote('AAPL', both)?.provider).toBe('finnhub');
-    expect(planQuote('VOD.L', both)).toEqual({ provider: 'alphavantage', quoteSymbol: 'VOD.LON', currency: 'GBX' });
-    expect(planQuote('VOD.L', settingsWith({ finnhubKey: 'fh' }))).toBeNull();
-    expect(planQuote('AAPL', DEFAULT_PRICE_SETTINGS)).toBeNull();
+    expect(planQuotes('AAPL', avOnly).map((plan) => plan.provider)).toEqual(['alphavantage']);
+    expect(planQuotes('AAPL', both).map((plan) => plan.provider)).toEqual(['finnhub', 'alphavantage']);
+    expect(planQuotes('VOD.L', both)).toEqual([{ provider: 'alphavantage', quoteSymbol: 'VOD.LON', currency: 'GBX' }]);
+    expect(planQuotes('VOD.L', settingsWith({ finnhubKey: 'fh' }))).toEqual([]);
+    expect(planQuotes('AAPL', DEFAULT_PRICE_SETTINGS)).toEqual([]);
+  });
+
+  it('falls back to EODHD after Alpha Vantage, in its own spelling', () => {
+    const all = settingsWith({ alphaVantageKey: 'av', finnhubKey: 'fh', eodhdKey: 'eo' });
+    expect(planQuotes('VOD.L', all)).toEqual([
+      { provider: 'alphavantage', quoteSymbol: 'VOD.LON', currency: 'GBX' },
+      { provider: 'eodhd', quoteSymbol: 'VOD.LSE', currency: 'GBX' },
+    ]);
+    expect(planQuotes('AAPL', all).map((plan) => plan.provider)).toEqual(['finnhub', 'alphavantage', 'eodhd']);
+    expect(planQuotes('SAP.DE', settingsWith({ eodhdKey: 'eo' }))).toEqual([
+      { provider: 'eodhd', quoteSymbol: 'SAP.XETRA', currency: 'EUR' },
+    ]);
+  });
+
+  it('maps quote symbols to EODHD exchange codes', () => {
+    expect(eodhdSymbolFor('AAPL')).toBe('AAPL.US');
+    expect(eodhdSymbolFor('VOD.LON')).toBe('VOD.LSE');
+    expect(eodhdSymbolFor('MC.PAR')).toBe('MC.PA');
+    expect(eodhdSymbolFor('ASML.AMS')).toBe('ASML.AS');
+    expect(eodhdSymbolFor('NESN.SW')).toBe('NESN.SW');
   });
 
   it('uses the symbol overrides', () => {
@@ -69,8 +91,8 @@ describe('symbols and currencies', () => {
       alphaVantageKey: 'av',
       symbols: { VOD: { quoteSymbol: 'vod.lon' }, RDSB: { quoteSymbol: 'SHEL.LON', quoteCurrency: 'GBP' } },
     });
-    expect(planQuote('VOD', settings)).toEqual({ provider: 'alphavantage', quoteSymbol: 'VOD.LON', currency: 'GBX' });
-    expect(planQuote('RDSB', settings)?.currency).toBe('GBP');
+    expect(planQuotes('VOD', settings)).toEqual([{ provider: 'alphavantage', quoteSymbol: 'VOD.LON', currency: 'GBX' }]);
+    expect(planQuotes('RDSB', settings)[0]?.currency).toBe('GBP');
   });
 });
 
@@ -207,6 +229,15 @@ describe('response parsers', () => {
       asOf: new Date(1790000000 * 1000).toISOString(),
     });
     expect(() => parseFinnhubQuote({ c: 0, t: 0 })).toThrow('Symbol not found.');
+  });
+
+  it('reads an EODHD quote, using the previous close when there is no live one', () => {
+    expect(parseEodhdQuote({ code: 'VOD.LSE', timestamp: 1790000000, close: 72.46, previousClose: 71 })).toEqual({
+      price: 72.46,
+      asOf: new Date(1790000000 * 1000).toISOString(),
+    });
+    expect(parseEodhdQuote({ code: 'VOD.LSE', timestamp: 'NA', close: 'NA', previousClose: 71 }).price).toBe(71);
+    expect(() => parseEodhdQuote({ code: 'NOPE.LSE', close: 'NA', previousClose: 'NA' })).toThrow('Symbol not found.');
   });
 
   it('reads Frankfurter rates, dropping bad values', () => {
