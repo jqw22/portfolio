@@ -7,6 +7,8 @@ import {
   parseAlphaVantageQuote,
   parseFinnhubQuote,
   parseFxRates,
+  parseRelayResponse,
+  parseRelayUrl,
   planQuotes,
   PriceSourceError,
   quoteCurrencyFor,
@@ -14,6 +16,7 @@ import {
   resolvePrice,
   totalUnrealised,
   unrealisedGain,
+  yahooSymbolFor,
   type FxRates,
   type PriceSettings,
   type Quote,
@@ -62,6 +65,34 @@ describe('symbols and currencies', () => {
     expect(planQuotes('VOD.L', both)).toEqual([{ provider: 'alphavantage', quoteSymbol: 'VOD.LON', currency: 'GBX' }]);
     expect(planQuotes('VOD.L', settingsWith({ finnhubKey: 'fh' }))).toEqual([]);
     expect(planQuotes('AAPL', DEFAULT_PRICE_SETTINGS)).toEqual([]);
+  });
+
+  it('puts the relay first, in Yahoo spelling, when its address is set', () => {
+    const all = settingsWith({ relayUrl: 'https://prices.example.workers.dev', alphaVantageKey: 'av', finnhubKey: 'fh' });
+    expect(planQuotes('VOD.L', all)).toEqual([
+      { provider: 'relay', quoteSymbol: 'VOD.L', currency: 'GBX' },
+      { provider: 'alphavantage', quoteSymbol: 'VOD.LON', currency: 'GBX' },
+    ]);
+    expect(planQuotes('AAPL', all).map((plan) => plan.provider)).toEqual(['relay', 'finnhub', 'alphavantage']);
+    expect(planQuotes('DGE', settingsWith({ relayUrl: 'https://r.example', symbols: { DGE: { quoteSymbol: 'DGE.LON' } } }))).toEqual([
+      { provider: 'relay', quoteSymbol: 'DGE.L', currency: 'GBX' },
+    ]);
+    expect(planQuotes('VOD.L', settingsWith({ relayUrl: 'not a url' }))).toEqual([]);
+  });
+
+  it('maps quote symbols to Yahoo spelling', () => {
+    expect(yahooSymbolFor('VOD.LON')).toBe('VOD.L');
+    expect(yahooSymbolFor('SAP.DEX')).toBe('SAP.DE');
+    expect(yahooSymbolFor('MC.PAR')).toBe('MC.PA');
+    expect(yahooSymbolFor('NESN.SW')).toBe('NESN.SW');
+    expect(yahooSymbolFor('AAPL')).toBe('AAPL');
+  });
+
+  it('accepts only https relay addresses (or local ones)', () => {
+    expect(parseRelayUrl(' https://prices.example.workers.dev ')?.hostname).toBe('prices.example.workers.dev');
+    expect(parseRelayUrl('http://localhost:8787')).not.toBeNull();
+    expect(parseRelayUrl('http://prices.example')).toBeNull();
+    expect(parseRelayUrl('')).toBeNull();
   });
 
   it('uses the symbol overrides', () => {
@@ -207,6 +238,21 @@ describe('response parsers', () => {
       asOf: new Date(1790000000 * 1000).toISOString(),
     });
     expect(() => parseFinnhubQuote({ c: 0, t: 0 })).toThrow('Symbol not found.');
+  });
+
+  it('reads the relay answer, with an error for each symbol it could not price', () => {
+    const json = {
+      quotes: { 'DGE.L': { price: 2150.5, currency: 'GBp', time: 1790000000 } },
+      errors: { 'NOPE.L': 'Symbol not found.' },
+    };
+    expect(parseRelayResponse(json, ['DGE.L', 'NOPE.L', 'MISSING.L'])).toEqual({
+      'DGE.L': { price: 2150.5, currency: 'GBp', asOf: new Date(1790000000 * 1000).toISOString() },
+      'NOPE.L': { error: 'Symbol not found.' },
+      'MISSING.L': { error: 'Symbol not found.' },
+    });
+    expect(() => parseRelayResponse({ error: 'This origin is not allowed.' }, ['X'])).toThrow(
+      'Price relay: This origin is not allowed.',
+    );
   });
 
   it('reads Frankfurter rates, dropping bad values', () => {

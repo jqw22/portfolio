@@ -17,6 +17,7 @@ import { CURRENCIES } from '@/lib/currency';
 import { parseNumber } from '@/lib/portfolio';
 import {
   formatFetchedOn,
+  parseRelayUrl,
   quoteCurrencyFor,
   quoteSymbolFor,
   type PriceSettings,
@@ -93,6 +94,8 @@ function PricesForm({
   onFetch,
   onDone,
 }: Omit<PricesDialogProps, 'open' | 'onOpenChange'> & { onDone: () => void }) {
+  const [relayUrl, setRelayUrl] = useState(settings.relayUrl);
+  const [relayError, setRelayError] = useState('');
   const [alphaVantageKey, setAlphaVantageKey] = useState(settings.alphaVantageKey);
   const [finnhubKey, setFinnhubKey] = useState(settings.finnhubKey);
   const [drafts, setDrafts] = useState<Record<string, SymbolDraft>>(() =>
@@ -116,6 +119,7 @@ function PricesForm({
     try {
       // Use the keys and look-up as they are in the form, saved or not.
       await onFetch(symbol, {
+        relayUrl: parseRelayUrl(relayUrl) ? relayUrl.trim() : '',
         alphaVantageKey: alphaVantageKey.trim(),
         finnhubKey: finnhubKey.trim(),
         symbols: { [symbol]: lookupSettings(draft) },
@@ -156,11 +160,14 @@ function PricesForm({
       else delete nextSymbols[symbol];
     }
 
-    if (Object.keys(nextErrors).length > 0) {
+    const relayInvalid = Boolean(relayUrl.trim()) && !parseRelayUrl(relayUrl);
+    setRelayError(relayInvalid ? 'Enter the relay address starting with https://, or leave it blank.' : '');
+    if (Object.keys(nextErrors).length > 0 || relayInvalid) {
       setErrors(nextErrors);
       return;
     }
     onSave({
+      relayUrl: relayUrl.trim(),
       alphaVantageKey: alphaVantageKey.trim(),
       finnhubKey: finnhubKey.trim(),
       symbols: nextSymbols,
@@ -173,7 +180,42 @@ function PricesForm({
       <section className="space-y-4">
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <Label htmlFor="price-av-key">Alpha Vantage key</Label>
+            <Label htmlFor="price-relay-url">Price relay address</Label>
+            <a
+              href="https://github.com/jqw22/portfolio/blob/main/relay/README.md"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-primary underline-offset-4 hover:underline"
+            >
+              How to set one up
+              <ExternalLink className="size-3" />
+            </a>
+          </div>
+          <Input
+            id="price-relay-url"
+            type="url"
+            inputMode="url"
+            autoComplete="off"
+            value={relayUrl}
+            onChange={(event) => {
+              setRelayUrl(event.target.value);
+              setRelayError('');
+            }}
+            placeholder="https://ledger-prices.your-name.workers.dev"
+            aria-invalid={Boolean(relayError)}
+            aria-describedby="price-relay-help"
+          />
+          {relayError ? <p className="text-xs text-destructive">{relayError}</p> : null}
+          <p id="price-relay-help" className="text-xs text-muted-foreground">
+            Your own free Cloudflare relay for Yahoo prices: London, European and US exchanges with no daily limit.
+            When it's set, the keys below are only used if the relay can't price a stock.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="price-av-key">
+              Alpha Vantage key <span className="font-normal text-muted-foreground">(optional with a relay)</span>
+            </Label>
             <a
               href="https://www.alphavantage.co/support/#api-key"
               target="_blank"
