@@ -151,6 +151,48 @@ below zero on any date, unless that account was already lower than that before
 the change. Every trade and cash movement entered in the app belongs to an
 account.
 
+## Account value snapshots
+
+Ledger also keeps a daily history of each account's value for the chart on the
+Analysis tab. Prices are not part of the ledger, so the history can't be rebuilt
+from trades; it is recorded forward instead, once a day while the app is open.
+
+It lives in its own event so it never adds to the ledger event's size:
+
+| Field | Value |
+| --- | --- |
+| `kind` | `30078` (NIP-78 application-specific data) |
+| `content` | NIP-44 ciphertext, encrypted to the author's own pubkey |
+| `tags` | `["d", "stock-ledger-snapshots"]`, `["alt", "Encrypted daily account value snapshots"]` |
+
+Read it with `authors: [user.pubkey]` and `'#d': ['stock-ledger-snapshots']`.
+`content` decrypts to:
+
+```jsonc
+{
+  "version": 1,
+  "snapshots": [
+    {
+      "date": "2026-10-19",          // local calendar day, YYYY-MM-DD; one snapshot per day
+      "currency": "GBP",             // display currency the values are in
+      "values": { "ISA": 13950, "GIA": 5450 }, // account → open positions at latest prices plus cash, whole units
+      "takenAt": 1792426403386       // ms since epoch when recorded
+    }
+  ]
+}
+```
+
+Holdings and cash with no account are recorded under `"No account"`. A later
+recording on the same day replaces the earlier one. Because snapshots only
+accumulate, copies are **merged** rather than replaced: the union of days, with
+the later `takenAt` winning for a day both copies hold. Renaming an account
+renames it in every snapshot; resetting the ledger deletes them all. Values are
+derived, not authoritative: unpriced holdings count at cost, as on the Analysis
+tab.
+
+Signed out, snapshots are cached in `localStorage` under
+`stock-ledger:snapshots:<pubkey|anon>`.
+
 ## Local cache
 
 While signed out (or offline), the ledger is kept in `localStorage` under

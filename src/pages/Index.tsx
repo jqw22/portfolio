@@ -1,9 +1,10 @@
-import { useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useSeoMeta } from '@unhead/react';
 import { LineChart, Plus, RefreshCw, Wallet } from 'lucide-react';
 
 import { LoginArea } from '@/components/auth/LoginArea';
 import { AccountsDialog } from '@/components/ledger/AccountsDialog';
+import { AccountValueChart } from '@/components/ledger/AccountValueChart';
 import { AnalysisTable } from '@/components/ledger/AnalysisTable';
 import { AppHeader } from '@/components/ledger/AppHeader';
 import { DataMenu } from '@/components/ledger/DataMenu';
@@ -16,6 +17,7 @@ import { TransactionsTable } from '@/components/ledger/TransactionsTable';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useAccountSnapshots } from '@/hooks/useAccountSnapshots';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { usePrices } from '@/hooks/usePrices';
 import { useStockTransactions } from '@/hooks/useStockTransactions';
@@ -23,6 +25,7 @@ import { useToast } from '@/hooks/useToast';
 import { summariseByAccount, summariseByLabel } from '@/lib/analysis';
 import { cashBalanceList, newCashShortfalls, type CashBalance } from '@/lib/cash';
 import { csvToTransactions } from '@/lib/csv';
+import { accountValues } from '@/lib/snapshots';
 import { DEFAULT_CURRENCY } from '@/lib/currency';
 import {
   computePortfolio,
@@ -171,6 +174,17 @@ export default function Index() {
     () => summariseByAccount(portfolio.holdings, cashBalances, accounts, prices),
     [portfolio.holdings, cashBalances, accounts, prices],
   );
+  const {
+    snapshots,
+    record: recordSnapshot,
+    renameAccount: renameSnapshotAccount,
+    clear: clearSnapshots,
+  } = useAccountSnapshots();
+  // Save today's value of each account whenever it changes (e.g. after prices refresh).
+  useEffect(() => {
+    if (isLoading || isRefreshing || accountSummary.rows.length === 0) return;
+    recordSnapshot(accountValues(accountSummary), currency);
+  }, [isLoading, isRefreshing, accountSummary, currency, recordSnapshot]);
   const labelSummary = useMemo(
     () => summariseByLabel(portfolio.holdings, transactions, cashBalances, labels, prices),
     [portfolio.holdings, transactions, cashBalances, labels, prices],
@@ -341,7 +355,10 @@ export default function Index() {
           ledger={{ transactions, cash, labels, accounts }}
           onRequestImport={() => fileInputRef.current?.click()}
           onLoadSample={handleLoadSample}
-          onReset={resetLedger}
+          onReset={() => {
+            resetLedger();
+            clearSnapshots();
+          }}
         />
         <LoginArea className="max-w-44 sm:max-w-56" />
       </AppHeader>
@@ -483,6 +500,7 @@ export default function Index() {
                 </TabsContent>
 
                 <TabsContent value="analysis" className="mt-4 space-y-6">
+                  <AccountValueChart snapshots={snapshots} accounts={accounts} currency={currency} />
                   <AnalysisTable
                     title="By account"
                     description="Each account's positions and cash. Realised P&L includes closed positions; unpriced holdings count at cost."
@@ -543,7 +561,11 @@ export default function Index() {
         cash={cash}
         currency={currency}
         onAdd={addAccount}
-        onRename={renameAccount}
+        onRename={(from, to) => {
+          const renamed = renameAccount(from, to);
+          if (renamed) renameSnapshotAccount(from, to);
+          return renamed;
+        }}
         onDelete={deleteAccount}
       />
     </div>
