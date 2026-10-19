@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { fetchAlphaVantageQuote, fetchFinnhubQuote, fetchFxRates } from '@/lib/priceSources';
+import { fetchAlphaVantageQuote, fetchFinnhubQuote, fetchFxRates, fetchRelayQuotes, RELAY_BATCH } from '@/lib/priceSources';
 import {
   DEFAULT_PRICE_SETTINGS,
   planQuotes,
@@ -10,6 +10,7 @@ import {
   type PriceSettings,
   type Quote,
   type QuotePlan,
+  type RelayQuote,
   type ResolvedPrice,
 } from '@/lib/prices';
 
@@ -60,12 +61,28 @@ function save(key: string, value: unknown) {
 }
 
 const PROVIDER_NAMES: Record<QuotePlan['provider'], string> = {
+  relay: 'Price relay',
   alphavantage: 'Alpha Vantage',
   finnhub: 'Finnhub',
 };
 
-function callProvider(plan: QuotePlan, settings: PriceSettings, signal?: AbortSignal) {
+type RelayAnswer = RelayQuote | { error: string };
+
+function fromRelayAnswer(answer: RelayAnswer): { price: number; asOf: string; currency?: string } {
+  if ('error' in answer) throw new PriceSourceError(answer.error);
+  return { price: answer.price, asOf: answer.asOf, currency: answer.currency || undefined };
+}
+
+async function callProvider(
+  plan: QuotePlan,
+  settings: PriceSettings,
+  signal?: AbortSignal,
+): Promise<{ price: number; asOf: string; currency?: string }> {
   switch (plan.provider) {
+    case 'relay': {
+      const answers = await fetchRelayQuotes(settings.relayUrl, [plan.quoteSymbol], signal);
+      return fromRelayAnswer(answers[plan.quoteSymbol]);
+    }
     case 'finnhub':
       return fetchFinnhubQuote(plan.quoteSymbol, settings.finnhubKey, signal);
     case 'alphavantage':
@@ -73,16 +90,35 @@ function callProvider(plan: QuotePlan, settings: PriceSettings, signal?: AbortSi
   }
 }
 
-async function fetchQuote(plan: QuotePlan, settings: PriceSettings, signal?: AbortSignal): Promise<Quote> {
-  const { price, asOf } = await callProvider(plan, settings, signal);
+function toQuote(plan: QuotePlan, found: { price: number; asOf: string; currency?: string }): Quote {
   return {
-    price,
-    currency: plan.currency,
-    asOf,
+    price: found.price,
+    currency: found.currency ?? plan.currency,
+    asOf: found.asOf,
     fetchedAt: Date.now(),
     provider: plan.provider,
     quoteSymbol: plan.quoteSymbol,
   };
+}
+
+async function fetchQuote(plan: QuotePlan, settings: PriceSettings, signal?: AbortSignal): Promise<Quote> {
+  return toQuote(plan, await callProvider(plan, settings, signal));
+}
+
+/** Ask the relay for many symbols in as few requests as it allows. A failed request becomes an error for each of its symbols. */
+async function fetchRelayBatch(relayUrl: string, symbols: string[], signal: AbortSignal) {
+  const answers: Record<string, RelayAnswer> = {};
+  for (let start = 0; start < symbols.length; start += RELAY_BATCH) {
+    const chunk = symbols.slice(start, start + RELAY_BATCH);
+    try {
+      Object.assign(answers, await fetchRelayQuotes(relayUrl, chunk, signal));
+    } catch (error) {
+      if (signal.aborted) throw error;
+      const message = error instanceof Error ? error.message : 'Failed to fetch.';
+      for (const symbol of chunk) answers[symbol] = { error: message };
+    }
+  }
+  return answers;
 }
 
 function wait(ms: number, signal: AbortSignal) {
@@ -136,6 +172,22 @@ export function usePrices(symbols: string[], currency: string) {
           result.fxFailed = true;
         }
 
+        // The relay takes many symbols a request, so ask it for all of them up front.
+        const toFetch = (only ?? symbols).filter((symbol) => settings.symbols[symbol]?.manualPrice === undefined);
+        const relaySymbols = new Map<string, string>();
+        for (const symbol of toFetch) {
+          const first = planQuotes(symbol, settings)[0];
+          if (first?.provider === 'relay') relaySymbols.set(symbol, first.quoteSymbol);
+        }
+        const relayAnswers =
+          relaySymbols.size > 0
+            ? await fetchRelayBatch(settings.relayUrl, [...new Set(relaySymbols.values())], signal).catch((error) => {
+                if (signal.aborted) return null;
+                throw error;
+              })
+            : {};
+        if (!relayAnswers) return result;
+
         let alphaVantageCalls = 0;
         /** Sources whose allowance ran out during this refresh. */
         const blocked = new Set<QuotePlan['provider']>();
@@ -148,8 +200,9 @@ export function usePrices(symbols: string[], currency: string) {
             result.needKey.push(symbol);
             continue;
           }
+          // Sources with a daily allowance skip prices fetched in the last few hours; the relay has none.
           const last = quotesRef.current[symbol];
-          if (!only && last && now - last.fetchedAt < FRESH_MS) {
+          if (!only && plans[0].provider !== 'relay' && last && now - last.fetchedAt < FRESH_MS) {
             result.skipped += 1;
             continue;
           }
@@ -164,7 +217,10 @@ export function usePrices(symbols: string[], currency: string) {
               alphaVantageCalls += 1;
             }
             try {
-              const quote = await fetchQuote(plan, settings, signal);
+              const relayAnswer = plan.provider === 'relay' ? relayAnswers[plan.quoteSymbol] : undefined;
+              const quote = relayAnswer
+                ? toQuote(plan, fromRelayAnswer(relayAnswer))
+                : await fetchQuote(plan, settings, signal);
               setCache((prev) => ({ ...prev, quotes: { ...prev.quotes, [symbol]: quote } }));
               result.updated += 1;
               failure = null;
@@ -210,14 +266,15 @@ export function usePrices(symbols: string[], currency: string) {
         return quote;
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to fetch.';
-        failures.push(message.startsWith(PROVIDER_NAMES[plan.provider]) ? message : `${PROVIDER_NAMES[plan.provider]}: ${message}`);
+        const name = PROVIDER_NAMES[plan.provider];
+        failures.push(message.toLowerCase().includes(name.toLowerCase()) ? message : `${name}: ${message}`);
       }
     }
-    throw new Error(failures.join(' '));
+    throw new Error(failures.map((failure) => failure.charAt(0).toUpperCase() + failure.slice(1)).join(' '));
   }, []);
 
   // Refresh once on open when the last refresh is stale. Exchange rates need no key.
-  const hasKey = Boolean(settings.alphaVantageKey.trim() || settings.finnhubKey.trim());
+  const hasKey = Boolean(settings.relayUrl.trim() || settings.alphaVantageKey.trim() || settings.finnhubKey.trim());
   useEffect(() => {
     if (autoRef.current || symbols.length === 0) return;
     const now = Date.now();

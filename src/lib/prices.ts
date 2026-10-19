@@ -9,7 +9,7 @@ import type { Holding } from './portfolio';
 
 const EPSILON = 1e-9;
 
-export type PriceProviderId = 'alphavantage' | 'finnhub';
+export type PriceProviderId = 'relay' | 'alphavantage' | 'finnhub';
 
 /** How one ledger symbol is priced. Every field is optional. */
 export interface SymbolPriceSettings {
@@ -27,12 +27,14 @@ export interface SymbolPriceSettings {
 
 /** Kept in this browser only (never synced), because it holds API keys. */
 export interface PriceSettings {
+  /** Address of the user's own price relay (see `relay/`), which fetches Yahoo prices. */
+  relayUrl: string;
   alphaVantageKey: string;
   finnhubKey: string;
   symbols: Record<string, SymbolPriceSettings>;
 }
 
-export const DEFAULT_PRICE_SETTINGS: PriceSettings = { alphaVantageKey: '', finnhubKey: '', symbols: {} };
+export const DEFAULT_PRICE_SETTINGS: PriceSettings = { relayUrl: '', alphaVantageKey: '', finnhubKey: '', symbols: {} };
 
 /** A price fetched from a source, in the currency the source quotes. */
 export interface Quote {
@@ -85,6 +87,11 @@ const SUFFIX_TO_ALPHA_VANTAGE: Record<string, string> = {
   AS: 'AMS',
   TO: 'TRT',
 };
+
+/** Alpha Vantage suffixes and the Yahoo suffix for the same exchange. */
+const ALPHA_VANTAGE_TO_YAHOO: Record<string, string> = Object.fromEntries(
+  Object.entries(SUFFIX_TO_ALPHA_VANTAGE).map(([yahoo, alphaVantage]) => [alphaVantage, yahoo]),
+);
 
 /** Currency each exchange suffix quotes in (Alpha Vantage and Yahoo spellings). */
 const SUFFIX_CURRENCY: Record<string, string> = {
@@ -139,23 +146,45 @@ export function isUsSymbol(quoteSymbol: string): boolean {
   return splitSuffix(quoteSymbol)[1] === undefined;
 }
 
+/** The symbol to ask Yahoo (via the relay) for, e.g. `VOD.LON` → `VOD.L`. */
+export function yahooSymbolFor(quoteSymbol: string): string {
+  const [base, suffix] = splitSuffix(quoteSymbol);
+  if (!suffix) return base;
+  return `${base}.${ALPHA_VANTAGE_TO_YAHOO[suffix] ?? suffix}`;
+}
+
+/** The relay address as a URL, or `null` when it isn't a valid https (or local http) address. */
+export function parseRelayUrl(value: string): URL | null {
+  const text = value.trim();
+  if (!text) return null;
+  try {
+    const url = new URL(text);
+    const local = url.protocol === 'http:' && (url.hostname === 'localhost' || url.hostname === '127.0.0.1');
+    return url.protocol === 'https:' || local ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface QuotePlan {
   provider: PriceProviderId;
   /** The symbol in the provider's own spelling. */
   quoteSymbol: string;
+  /** Currency the price is expected in; the relay's own answer wins. */
   currency: string;
 }
 
 /**
- * The sources to try for a symbol, best first; empty when no key can price it.
- * US tickers go to Finnhub first when its key is set (it allows far more
- * calls), then Alpha Vantage.
+ * The sources to try for a symbol, best first; empty when nothing can price it.
+ * The relay comes first when set up (no daily limit). US tickers then go to
+ * Finnhub when its key is set (it allows far more calls), then Alpha Vantage.
  */
 export function planQuotes(symbol: string, settings: PriceSettings): QuotePlan[] {
   const own = settings.symbols[symbol] ?? {};
   const quoteSymbol = own.quoteSymbol?.trim().toUpperCase() || quoteSymbolFor(symbol);
   const currency = own.quoteCurrency || quoteCurrencyFor(quoteSymbol);
   const plans: QuotePlan[] = [];
+  if (parseRelayUrl(settings.relayUrl)) plans.push({ provider: 'relay', quoteSymbol: yahooSymbolFor(quoteSymbol), currency });
   if (settings.finnhubKey.trim() && isUsSymbol(quoteSymbol)) plans.push({ provider: 'finnhub', quoteSymbol, currency });
   if (settings.alphaVantageKey.trim()) plans.push({ provider: 'alphavantage', quoteSymbol, currency });
   return plans;
@@ -331,6 +360,42 @@ export function parseFinnhubQuote(json: unknown): { price: number; asOf: string 
   if (!Number.isFinite(price) || price <= 0) throw new PriceSourceError('Symbol not found.');
   const time = Number(record.t);
   return { price, asOf: Number.isFinite(time) && time > 0 ? new Date(time * 1000).toISOString() : '' };
+}
+
+export interface RelayQuote {
+  price: number;
+  currency: string;
+  asOf: string;
+}
+
+/**
+ * Read the relay's answer: a quote or an error message for each symbol asked.
+ * Symbols missing from the answer get an error too.
+ */
+export function parseRelayResponse(json: unknown, asked: string[]): Record<string, RelayQuote | { error: string }> {
+  const record = asRecord(json);
+  const quotes = asRecord(record?.quotes);
+  if (!record || !quotes) {
+    throw new PriceSourceError(typeof record?.error === 'string' ? `Price relay: ${record.error}` : 'Unexpected response from the price relay.');
+  }
+  const errors = asRecord(record.errors) ?? {};
+  const out: Record<string, RelayQuote | { error: string }> = {};
+  for (const symbol of asked) {
+    const quote = asRecord(quotes[symbol]);
+    const price = Number(quote?.price);
+    if (quote && Number.isFinite(price) && price > 0) {
+      const time = Number(quote.time);
+      out[symbol] = {
+        price,
+        currency: typeof quote.currency === 'string' ? quote.currency : '',
+        asOf: Number.isFinite(time) && time > 0 ? new Date(time * 1000).toISOString() : '',
+      };
+    } else {
+      const error = errors[symbol];
+      out[symbol] = { error: typeof error === 'string' ? error : 'Symbol not found.' };
+    }
+  }
+  return out;
 }
 
 /** Read a Frankfurter `/latest` response. */

@@ -1,7 +1,9 @@
 /**
- * Browser-side calls to the price and exchange rate sources. All three allow
- * cross-origin requests, so the app needs no server:
+ * Browser-side calls to the price and exchange rate sources. All of them allow
+ * cross-origin requests, so the app needs no server of its own:
  *
+ * - Price relay: the user's own Cloudflare Worker (`relay/`) passing on Yahoo
+ *   prices, which covers London and European exchanges with no daily limit.
  * - Alpha Vantage: free key, US and European exchanges, 25 calls a day.
  * - Finnhub: free key, US tickers only on the free tier, 60 calls a minute.
  * - Frankfurter: ECB reference rates, no key.
@@ -11,6 +13,8 @@ import {
   parseAlphaVantageQuote,
   parseFinnhubQuote,
   parseFxRates,
+  parseRelayResponse,
+  parseRelayUrl,
   PriceSourceError,
   type FxRates,
 } from './prices';
@@ -38,6 +42,17 @@ export async function fetchAlphaVantageQuote(symbol: string, key: string, signal
 export async function fetchFinnhubQuote(symbol: string, key: string, signal?: AbortSignal) {
   const params = new URLSearchParams({ symbol, token: key.trim() });
   return parseFinnhubQuote(await getJson('Finnhub', `https://finnhub.io/api/v1/quote?${params}`, signal));
+}
+
+/** The relay accepts up to this many symbols a request. */
+export const RELAY_BATCH = 50;
+
+/** Latest prices for Yahoo-style `symbols` from the user's price relay. */
+export async function fetchRelayQuotes(relayUrl: string, symbols: string[], signal?: AbortSignal) {
+  const url = parseRelayUrl(relayUrl);
+  if (!url) throw new PriceSourceError('The price relay address must start with https://.');
+  url.searchParams.set('symbols', symbols.join(','));
+  return parseRelayResponse(await getJson('the price relay', url.toString(), signal), symbols);
 }
 
 /** Latest ECB reference rates against the euro. */

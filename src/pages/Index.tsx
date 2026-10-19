@@ -208,13 +208,14 @@ export default function Index() {
 
   const handleSavePrices = (next: typeof priceSettings) => {
     const keysChanged =
+      next.relayUrl !== priceSettings.relayUrl ||
       next.alphaVantageKey !== priceSettings.alphaVantageKey ||
       next.finnhubKey !== priceSettings.finnhubKey;
     setPriceSettings(next);
     toast({
       title: 'Price settings saved',
       description:
-        keysChanged && (next.alphaVantageKey || next.finnhubKey) ? 'Press Refresh to fetch prices with your key.' : undefined,
+        keysChanged && (next.relayUrl || next.alphaVantageKey || next.finnhubKey) ? 'Press Refresh to fetch prices.' : undefined,
     });
   };
 
