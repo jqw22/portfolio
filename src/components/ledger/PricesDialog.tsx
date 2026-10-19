@@ -95,7 +95,6 @@ function PricesForm({
 }: Omit<PricesDialogProps, 'open' | 'onOpenChange'> & { onDone: () => void }) {
   const [alphaVantageKey, setAlphaVantageKey] = useState(settings.alphaVantageKey);
   const [finnhubKey, setFinnhubKey] = useState(settings.finnhubKey);
-  const [eodhdKey, setEodhdKey] = useState(settings.eodhdKey);
   const [drafts, setDrafts] = useState<Record<string, SymbolDraft>>(() =>
     Object.fromEntries(symbols.map((symbol) => [symbol, toDraft(settings.symbols[symbol] ?? {})])),
   );
@@ -119,7 +118,6 @@ function PricesForm({
       await onFetch(symbol, {
         alphaVantageKey: alphaVantageKey.trim(),
         finnhubKey: finnhubKey.trim(),
-        eodhdKey: eodhdKey.trim(),
         symbols: { [symbol]: lookupSettings(draft) },
       });
       if (hadManual) {
@@ -165,7 +163,6 @@ function PricesForm({
     onSave({
       alphaVantageKey: alphaVantageKey.trim(),
       finnhubKey: finnhubKey.trim(),
-      eodhdKey: eodhdKey.trim(),
       symbols: nextSymbols,
     });
     onDone();
@@ -226,34 +223,6 @@ function PricesForm({
           <p className="text-xs text-muted-foreground">
             When set, US tickers are priced by Finnhub instead, which saves your Alpha Vantage allowance for European
             ones.
-          </p>
-        </div>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <Label htmlFor="price-eodhd-key">
-              EODHD key <span className="font-normal text-muted-foreground">(optional)</span>
-            </Label>
-            <a
-              href="https://eodhd.com/register"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-primary underline-offset-4 hover:underline"
-            >
-              Get a free key
-              <ExternalLink className="size-3" />
-            </a>
-          </div>
-          <Input
-            id="price-eodhd-key"
-            type="password"
-            autoComplete="off"
-            value={eodhdKey}
-            onChange={(event) => setEodhdKey(event.target.value)}
-            placeholder="Paste your key"
-          />
-          <p className="text-xs text-muted-foreground">
-            A second source for US and European exchanges, used when Alpha Vantage's allowance runs out or it can't
-            find a symbol. The free tier allows 20 lookups a day.
           </p>
         </div>
       </section>

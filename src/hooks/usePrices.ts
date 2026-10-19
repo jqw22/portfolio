@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { fetchAlphaVantageQuote, fetchEodhdQuote, fetchFinnhubQuote, fetchFxRates } from '@/lib/priceSources';
+import { fetchAlphaVantageQuote, fetchFinnhubQuote, fetchFxRates } from '@/lib/priceSources';
 import {
   DEFAULT_PRICE_SETTINGS,
   planQuotes,
@@ -62,15 +62,12 @@ function save(key: string, value: unknown) {
 const PROVIDER_NAMES: Record<QuotePlan['provider'], string> = {
   alphavantage: 'Alpha Vantage',
   finnhub: 'Finnhub',
-  eodhd: 'EODHD',
 };
 
 function callProvider(plan: QuotePlan, settings: PriceSettings, signal?: AbortSignal) {
   switch (plan.provider) {
     case 'finnhub':
       return fetchFinnhubQuote(plan.quoteSymbol, settings.finnhubKey, signal);
-    case 'eodhd':
-      return fetchEodhdQuote(plan.quoteSymbol, settings.eodhdKey, signal);
     case 'alphavantage':
       return fetchAlphaVantageQuote(plan.quoteSymbol, settings.alphaVantageKey, signal);
   }
@@ -220,7 +217,7 @@ export function usePrices(symbols: string[], currency: string) {
   }, []);
 
   // Refresh once on open when the last refresh is stale. Exchange rates need no key.
-  const hasKey = Boolean(settings.alphaVantageKey.trim() || settings.finnhubKey.trim() || settings.eodhdKey.trim());
+  const hasKey = Boolean(settings.alphaVantageKey.trim() || settings.finnhubKey.trim());
   useEffect(() => {
     if (autoRef.current || symbols.length === 0) return;
     const now = Date.now();
