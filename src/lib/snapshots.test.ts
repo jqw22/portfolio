@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  addMonths,
   chartData,
   localDate,
   mergeSnapshots,
@@ -75,18 +76,34 @@ describe('parseSnapshots', () => {
   });
 });
 
+describe('addMonths', () => {
+  it('moves by months, clamping to the end of short months', () => {
+    expect(addMonths('2026-10-20', -3)).toBe('2026-07-20');
+    expect(addMonths('2026-05-31', -3)).toBe('2026-02-28');
+    expect(addMonths('2026-11-30', 3)).toBe('2027-02-28');
+  });
+});
+
 describe('chartData', () => {
-  it('keeps the last 12 months in the current currency, accounts in ledger order', () => {
+  it('fills a 3-month window from the first snapshot while the history is short', () => {
+    const list = [snap('2026-10-19', { ISA: 100 }), snap('2026-10-20', { ISA: 110 })];
+    const data = chartData(list, 'GBP', ['ISA'], '2026-10-20');
+    expect([data.start, data.end]).toEqual(['2026-10-19', '2027-01-19']);
+    expect(data.rows.map((row) => row.date)).toEqual(['2026-10-19', '2026-10-20']);
+  });
+
+  it('rolls once the history is longer than the window, in the current currency, accounts in ledger order', () => {
     const list = [
-      snap('2025-10-01', { ISA: 1 }),
-      snap('2026-01-10', { ISA: 100, [NO_ACCOUNT]: 5 }),
-      snap('2026-05-01', { ISA: 999 }, 1, 'USD'),
+      snap('2026-06-01', { ISA: 1 }),
+      snap('2026-08-10', { ISA: 100, [NO_ACCOUNT]: 5 }),
+      snap('2026-09-01', { ISA: 999 }, 1, 'USD'),
       snap('2026-10-19', { GIA: 50, ISA: 120, Old: 7 }),
     ];
     const data = chartData(list, 'GBP', ['GIA', 'ISA'], '2026-10-19');
+    expect([data.start, data.end]).toEqual(['2026-07-19', '2026-10-19']);
     expect(data.accounts).toEqual(['GIA', 'ISA', 'Old', NO_ACCOUNT]);
     expect(data.rows).toEqual([
-      { date: '2026-01-10', values: [null, 100, null, 5], total: 105 },
+      { date: '2026-08-10', values: [null, 100, null, 5], total: 105 },
       { date: '2026-10-19', values: [50, 120, 7, null], total: 177 },
     ]);
   });
