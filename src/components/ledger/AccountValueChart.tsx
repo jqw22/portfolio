@@ -40,6 +40,27 @@ function dayLabel(time: number): string {
   return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(time));
 }
 
+function dayTime(date: string): number {
+  return new Date(`${date}T00:00:00`).getTime();
+}
+
+/** Axis ticks on the 1st and 15th of each month between `start` and `end`. */
+function monthTicks(start: string, end: string): number[] {
+  const ticks: number[] = [];
+  const from = dayTime(start);
+  const to = dayTime(end);
+  const cursor = new Date(from);
+  cursor.setDate(1);
+  while (cursor.getTime() <= to) {
+    for (const day of [1, 15]) {
+      const time = new Date(cursor.getFullYear(), cursor.getMonth(), day).getTime();
+      if (time >= from && time <= to) ticks.push(time);
+    }
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return ticks;
+}
+
 function fullDayLabel(date: string): string {
   return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(
     new Date(`${date}T00:00:00`),
@@ -94,9 +115,9 @@ function SnapshotTooltip({
   );
 }
 
-/** Each account's value over the last 12 months, from the daily snapshots. */
+/** Each account's value over a rolling 3 months, from the daily snapshots. */
 export function AccountValueChart({ snapshots, accounts, currency }: AccountValueChartProps) {
-  const { rows, series, config } = useMemo(() => {
+  const { rows, series, config, domain, ticks } = useMemo(() => {
     const data = chartData(snapshots, currency, accounts, localDate());
     // More accounts than colours: keep the first ones and fold the rest into "Other".
     const folded = data.accounts.length > MAX_SERIES;
@@ -104,7 +125,7 @@ export function AccountValueChart({ snapshots, accounts, currency }: AccountValu
     const names = folded ? [...kept, 'Other'] : kept;
     const series = names.map((name, index) => ({ key: `a${index}`, name }));
     const rows: Row[] = data.rows.map((entry) => {
-      const row: Row = { time: new Date(`${entry.date}T00:00:00`).getTime(), date: entry.date, total: entry.total };
+      const row: Row = { time: dayTime(entry.date), date: entry.date, total: entry.total };
       kept.forEach((_, index) => {
         row[`a${index}`] = entry.values[index];
       });
@@ -117,7 +138,9 @@ export function AccountValueChart({ snapshots, accounts, currency }: AccountValu
     const config: ChartConfig = Object.fromEntries(
       series.map(({ key, name }, index) => [key, { label: name, theme: SERIES_COLOURS[index] }]),
     );
-    return { rows, series, config };
+    // Half a day of room on the left so the first point isn't clipped by the edge.
+    const domain: [number, number] = [dayTime(data.start) - 43_200_000, dayTime(data.end)];
+    return { rows, series, config, domain, ticks: monthTicks(data.start, data.end) };
   }, [snapshots, accounts, currency]);
 
   const names = Object.fromEntries(series.map(({ key, name }) => [key, name]));
@@ -141,7 +164,7 @@ export function AccountValueChart({ snapshots, accounts, currency }: AccountValu
           ) : null}
         </div>
         <CardDescription>
-          Each account's positions at latest prices plus cash, saved once a day when Ledger is open. Last 12 months.
+          Each account's positions at latest prices plus cash, saved once a day when Ledger is open. Last 3 months.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -158,12 +181,14 @@ export function AccountValueChart({ snapshots, accounts, currency }: AccountValu
                 dataKey="time"
                 type="number"
                 scale="time"
-                domain={rows.length === 1 ? [rows[0].time - 86_400_000, rows[0].time + 86_400_000] : ['dataMin', 'dataMax']}
+                domain={domain}
+                ticks={ticks}
+                allowDataOverflow
                 tickFormatter={dayLabel}
                 tickLine={false}
                 axisLine={false}
                 tickMargin={8}
-                minTickGap={40}
+                minTickGap={24}
               />
               <YAxis
                 tickFormatter={(value: number) => compactMoney(value, currency)}
@@ -182,7 +207,7 @@ export function AccountValueChart({ snapshots, accounts, currency }: AccountValu
                   type="monotone"
                   stroke={`var(--color-${key})`}
                   strokeWidth={2}
-                  dot={rows.length <= 1 ? { r: 4, strokeWidth: 2, fill: 'var(--background)' } : false}
+                  dot={rows.length <= 31 ? { r: 3, strokeWidth: 2, fill: 'var(--background)' } : false}
                   activeDot={{ r: 4, strokeWidth: 2, stroke: 'var(--background)' }}
                   connectNulls={false}
                   isAnimationActive={false}

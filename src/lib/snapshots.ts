@@ -136,27 +136,44 @@ export function parseSnapshots(json: unknown): Snapshot[] {
   return mergeSnapshots(snapshots, []);
 }
 
+/** Move a `YYYY-MM-DD` date by whole months, clamping to the month's last day (31 Jan + 1 month = 28/29 Feb). */
+export function addMonths(date: string, months: number): string {
+  const [year, month, day] = date.split('-').map(Number);
+  const target = new Date(year, month - 1 + months, 1);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  target.setDate(Math.min(day, lastDay));
+  return localDate(target);
+}
+
 export interface SnapshotChartData {
   /** Accounts to draw, in the ledger's account order, then any older names. */
   accounts: string[];
   /** One row per recorded day; `values[i]` belongs to `accounts[i]`, `null` when it had no value then. */
   rows: Array<{ date: string; values: Array<number | null>; total: number }>;
+  /** First and last day of the chart's time axis. */
+  start: string;
+  end: string;
 }
 
-/** Chart rows for the last `days` days (up to `today`) of snapshots in `currency`. */
+/**
+ * Chart rows for a window of `months` months in `currency`. Until the history
+ * is that long, the window starts at the first snapshot and the line fills in
+ * from the left; after that it rolls, ending today.
+ */
 export function chartData(
   snapshots: Snapshot[],
   currency: string,
   accountOrder: string[],
   today: string,
-  days = 365,
+  months = 3,
 ): SnapshotChartData {
-  const start = new Date(`${today}T00:00:00`);
-  start.setDate(start.getDate() - (days - 1));
-  const from = localDate(start);
-  const shown = snapshots.filter(
-    (snapshot) => snapshot.currency === currency && snapshot.date >= from && snapshot.date <= today,
-  );
+  const rollingStart = addMonths(today, -months);
+  const inCurrency = snapshots.filter((snapshot) => snapshot.currency === currency && snapshot.date <= today);
+  const first = inCurrency.find((snapshot) => snapshot.date >= rollingStart)?.date;
+  const filling = first !== undefined && first > rollingStart && !inCurrency.some((snapshot) => snapshot.date < first);
+  const start = filling ? first : rollingStart;
+  const end = filling ? addMonths(first, months) : today;
+  const shown = inCurrency.filter((snapshot) => snapshot.date >= start);
   const seen = new Set<string>();
   for (const snapshot of shown) for (const account of Object.keys(snapshot.values)) seen.add(account);
   const known = accountOrder.filter((account) => seen.has(account));
@@ -171,5 +188,5 @@ export function chartData(
     const values = accounts.map((account) => snapshot.values[account] ?? null);
     return { date: snapshot.date, values, total: values.reduce<number>((sum, value) => sum + (value ?? 0), 0) };
   });
-  return { accounts, rows };
+  return { accounts, rows, start, end };
 }
