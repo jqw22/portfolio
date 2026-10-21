@@ -30,11 +30,6 @@ export function useLoginActions() {
   };
 
   return {
-    // Login with a Nostr secret key
-    nsec(nsec: string): void {
-      const login = NLogin.fromNsec(nsec);
-      addAndActivate(login);
-    },
     // Login with a NIP-46 "bunker://" URI
     async bunker(uri: string): Promise<void> {
       const login = await NLogin.fromBunker(uri, nostr);
