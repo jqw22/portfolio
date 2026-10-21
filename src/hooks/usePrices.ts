@@ -68,16 +68,19 @@ const PROVIDER_NAMES: Record<QuotePlan['provider'], string> = {
 
 type RelayAnswer = RelayQuote | { error: string };
 
-function fromRelayAnswer(answer: RelayAnswer): { price: number; asOf: string; currency?: string } {
+/** What a source answered for one symbol. */
+type Found = { price: number; previousClose?: number; asOf: string; currency?: string };
+
+function fromRelayAnswer(answer: RelayAnswer): Found {
   if ('error' in answer) throw new PriceSourceError(answer.error);
-  return { price: answer.price, asOf: answer.asOf, currency: answer.currency || undefined };
+  return { price: answer.price, previousClose: answer.previousClose, asOf: answer.asOf, currency: answer.currency || undefined };
 }
 
 async function callProvider(
   plan: QuotePlan,
   settings: PriceSettings,
   signal?: AbortSignal,
-): Promise<{ price: number; asOf: string; currency?: string }> {
+): Promise<Found> {
   switch (plan.provider) {
     case 'relay': {
       const answers = await fetchRelayQuotes(settings.relayUrl, [plan.quoteSymbol], signal);
@@ -90,9 +93,10 @@ async function callProvider(
   }
 }
 
-function toQuote(plan: QuotePlan, found: { price: number; asOf: string; currency?: string }): Quote {
+function toQuote(plan: QuotePlan, found: Found): Quote {
   return {
     price: found.price,
+    ...(found.previousClose !== undefined ? { previousClose: found.previousClose } : {}),
     currency: found.currency ?? plan.currency,
     asOf: found.asOf,
     fetchedAt: Date.now(),

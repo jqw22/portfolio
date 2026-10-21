@@ -3,6 +3,8 @@ import { describe, it, expect } from 'vitest';
 import { computePortfolio, makeTransaction, type TransactionInput } from '@/lib/portfolio';
 import {
   convertAmount,
+  dayChangePercent,
+  dayChangeValue,
   DEFAULT_PRICE_SETTINGS,
   parseAlphaVantageQuote,
   parseFinnhubQuote,
@@ -14,6 +16,7 @@ import {
   quoteCurrencyFor,
   quoteSymbolFor,
   resolvePrice,
+  totalDayChange,
   totalUnrealised,
   unrealisedGain,
   yahooSymbolFor,
@@ -199,7 +202,7 @@ describe('totalUnrealised', () => {
       trade({ type: 'buy', symbol: 'VOD.L', quantity: 100, price: 1 }),
       trade({ type: 'buy', symbol: 'MSFT', quantity: 1, price: 300 }),
     ]);
-    const base = { nativePrice: 0, nativeCurrency: 'GBP', source: 'quote' as const, asOf: '', updatedAt: 0 };
+    const base = { nativePrice: 0, dayChangePercent: null, nativeCurrency: 'GBP', source: 'quote' as const, asOf: '', updatedAt: 0 };
     const total = totalUnrealised(openHoldings, {
       AAPL: { ...base, price: 110 },
       'VOD.L': { ...base, price: 0.8 },
@@ -214,10 +217,41 @@ describe('totalUnrealised', () => {
   });
 });
 
+describe('day change', () => {
+  it('compares the quote with the previous close, and has none for manual prices', () => {
+    expect(dayChangePercent({ price: 110, previousClose: 100 })).toBeCloseTo(10);
+    expect(dayChangePercent({ price: 110 })).toBeNull();
+    const settings = { ...DEFAULT_PRICE_SETTINGS, symbols: { 'VOD.L': { manualPrice: 80 } } };
+    const quotes = { AAPL: { ...quote(110, 'GBP'), previousClose: 100 } };
+    expect(resolvePrice('AAPL', settings, quotes, null, 'GBP')?.dayChangePercent).toBeCloseTo(10);
+    expect(resolvePrice('VOD.L', settings, quotes, null, 'GBP')?.dayChangePercent).toBeNull();
+  });
+
+  it('values the change per holding and in total', () => {
+    const [aapl, vod] = computePortfolio([
+      trade({ type: 'buy', symbol: 'AAPL', quantity: 10, price: 100 }),
+      trade({ type: 'buy', symbol: 'VOD.L', quantity: 100, price: 1 }),
+    ]).openHoldings.sort((a, b) => a.symbol.localeCompare(b.symbol));
+    const base = { nativePrice: 0, nativeCurrency: 'GBP', source: 'quote' as const, asOf: '', updatedAt: 0 };
+    const prices = {
+      AAPL: { ...base, price: 110, dayChangePercent: 10 },
+      'VOD.L': { ...base, price: 1, dayChangePercent: null },
+    };
+    expect(dayChangeValue(aapl, prices.AAPL)).toBeCloseTo(100);
+    expect(dayChangeValue(vod, prices['VOD.L'])).toBeNull();
+    const total = totalDayChange([aapl, vod], prices);
+    expect(total.change).toBeCloseTo(100);
+    expect(total.percent).toBeCloseTo(10);
+    expect(total.missing).toBe(1);
+  });
+});
+
 describe('response parsers', () => {
   it('reads an Alpha Vantage quote', () => {
     const json = { 'Global Quote': { '01. symbol': 'VOD.LON', '05. price': '72.4600', '07. latest trading day': '2026-09-29' } };
     expect(parseAlphaVantageQuote(json)).toEqual({ price: 72.46, asOf: '2026-09-29' });
+    const withClose = { 'Global Quote': { ...json['Global Quote'], '08. previous close': '71.9000' } };
+    expect(parseAlphaVantageQuote(withClose).previousClose).toBe(71.9);
   });
 
   it('flags Alpha Vantage limits and unknown symbols', () => {
@@ -237,6 +271,7 @@ describe('response parsers', () => {
       price: 227.5,
       asOf: new Date(1790000000 * 1000).toISOString(),
     });
+    expect(parseFinnhubQuote({ c: 227.5, pc: 225, t: 1790000000 }).previousClose).toBe(225);
     expect(() => parseFinnhubQuote({ c: 0, t: 0 })).toThrow('Symbol not found.');
   });
 

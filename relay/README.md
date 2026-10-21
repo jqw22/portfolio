@@ -35,3 +35,6 @@ tab. You should see a price for each symbol.
   that also fails, Ledger falls back to your Alpha Vantage or Finnhub key when
   you have one.
 - London prices come back in pence (`GBp`); Ledger converts them to pounds.
+- The relay also passes on the previous close, which Ledger uses for the Day
+  change column. A relay deployed before this was added shows "—" there until
+  you paste in the latest `price-relay.js` and deploy again.
