@@ -192,7 +192,7 @@ export function MyComponent() {
 
 ### Nostr Login
 
-Use the `LoginArea` component (already in the project). It renders a single "Join" button when logged out (opens an `AuthDialog` supporting signup, extension, nsec, and remote signer) and becomes an account switcher when logged in. **Do not wrap it in conditional logic.**
+Use the `LoginArea` component (already in the project). It renders a single "Join" button when logged out (opens an `AuthDialog` offering a NIP-07 extension or a NIP-46 remote signer only; the app never accepts or generates an nsec) and becomes an account switcher when logged in. **Do not wrap it in conditional logic.**
 
 ```tsx
 import { LoginArea } from '@/components/auth/LoginArea';
