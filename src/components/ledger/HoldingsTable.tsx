@@ -153,7 +153,7 @@ function DayChangeCell({ percent, change, currency }: { percent: number | null; 
   if (percent === null) return <span className="text-muted-foreground">—</span>;
   return (
     <div className={pnlClass(percent)}>
-      <span className="font-medium">{formatPercent(percent)}</span>
+      <span className="font-medium">{formatPercent(percent, 1)}</span>
       {change !== null ? <p className="mt-0.5 text-xs">{formatWhole(change, currency)}</p> : null}
     </div>
   );
@@ -385,7 +385,7 @@ export function HoldingsTable({
                   <TableCell className="text-right tabular-nums">
                     {dayTotal.percent !== null ? (
                       <div className={pnlClass(dayTotal.change)}>
-                        <span className="font-semibold">{formatPercent(dayTotal.percent)}</span>
+                        <span className="font-semibold">{formatPercent(dayTotal.percent, 1)}</span>
                         <p className="mt-0.5 text-xs font-normal">{formatWhole(dayTotal.change, currency)}</p>
                       </div>
                     ) : (

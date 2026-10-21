@@ -447,10 +447,10 @@ export function formatPrice(value: number, currency = DEFAULT_CURRENCY): string 
 }
 
 /** Format a percentage with an explicit sign. */
-export function formatPercent(value: number): string {
+export function formatPercent(value: number, decimals = 2): string {
   const safe = Number.isFinite(value) ? value : 0;
   const sign = safe > 0 ? '+' : '';
-  return `${sign}${safe.toFixed(2)}%`;
+  return `${sign}${safe.toFixed(decimals)}%`;
 }
 
 /** Format an ISO (`YYYY-MM-DD`) date for display. */
