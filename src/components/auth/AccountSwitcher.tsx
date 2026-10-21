@@ -11,6 +11,9 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar.tsx';
 import { Skeleton } from '@/components/ui/skeleton.tsx';
 import { useLoggedInAccounts, type Account } from '@/hooks/useLoggedInAccounts';
+import { useNostrLogin } from '@nostrify/react/login';
+import { toast } from '@/hooks/useToast';
+import { getExtensionPubkey } from '@/lib/extensionSigner';
 
 interface AccountSwitcherProps {
   onAddAccountClick: () => void;
@@ -19,7 +22,26 @@ interface AccountSwitcherProps {
 export function AccountSwitcher({ onAddAccountClick }: AccountSwitcherProps) {
   const { currentUser, otherUsers, isLoading, setLogin, removeLogin } = useLoggedInAccounts();
 
+  const { logins } = useNostrLogin();
+
   if (!currentUser) return null;
+
+  // An extension account can only be used while it is the extension's active
+  // account; the app can't switch the extension, so ask the user to.
+  const switchTo = async (account: Account) => {
+    const login = logins.find((l) => l.id === account.id);
+    if (login?.type === 'extension') {
+      const active = await getExtensionPubkey();
+      if (active !== login.pubkey) {
+        toast({
+          title: 'Switch in your extension',
+          description: `Make ${getDisplayName(account)} the active account in your signer extension. The app will follow it.`,
+        });
+        return;
+      }
+    }
+    setLogin(account.id);
+  };
 
   const getDisplayName = (account: Account): string => {
     return account.metadata.name ?? 'Anonymous';
@@ -79,7 +101,7 @@ export function AccountSwitcher({ onAddAccountClick }: AccountSwitcherProps) {
           return (
             <DropdownMenuItem
               key={user.id}
-              onClick={() => setLogin(user.id)}
+              onClick={() => switchTo(user)}
               className='flex items-center gap-2 cursor-pointer p-2 rounded-md'
             >
               <Avatar className='w-8 h-8'>

@@ -296,12 +296,15 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
                 </Button>
                 {extensionError ? (
                   <p className="text-sm text-destructive">{extensionError}</p>
+                ) : extensionFound ? (
+                  <p className="text-xs text-muted-foreground">
+                    Uses the account that's active in your extension. To use another one, switch accounts in
+                    the extension and Ledger will follow.
+                  </p>
                 ) : (
-                  !extensionFound && (
-                    <p className="text-xs text-muted-foreground">
-                      No extension detected. Install one such as Alby or nos2x, then reload this page.
-                    </p>
-                  )
+                  <p className="text-xs text-muted-foreground">
+                    No extension detected. Install one such as Alby or nos2x, then reload this page.
+                  </p>
                 )}
               </section>
 
