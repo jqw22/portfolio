@@ -39,6 +39,8 @@ export const DEFAULT_PRICE_SETTINGS: PriceSettings = { relayUrl: '', alphaVantag
 /** A price fetched from a source, in the currency the source quotes. */
 export interface Quote {
   price: number;
+  /** The last session's closing price, in the same currency. Missing from older quotes and relays. */
+  previousClose?: number;
   currency: string;
   /** When the market data is from: an ISO date (`YYYY-MM-DD`) or date-time. */
   asOf: string;
@@ -70,6 +72,8 @@ export interface ResolvedPrice {
   price: number | null;
   /** The price as entered or quoted, before conversion. */
   nativePrice: number;
+  /** Change since the last session's close as a percentage, or `null` when unknown (always for manual prices). */
+  dayChangePercent: number | null;
   nativeCurrency: string;
   source: 'manual' | 'quote';
   /** When the price is from: an ISO date or date-time. */
@@ -244,6 +248,7 @@ export function resolvePrice(
     return {
       price: convertAmount(own.manualPrice, nativeCurrency, currency, fx),
       nativePrice: own.manualPrice,
+      dayChangePercent: null,
       nativeCurrency,
       source: 'manual',
       asOf: updatedAt ? new Date(updatedAt).toISOString() : '',
@@ -257,11 +262,60 @@ export function resolvePrice(
   return {
     price: convertAmount(quote.price, nativeCurrency, currency, fx),
     nativePrice: quote.price,
+    dayChangePercent: dayChangePercent(quote),
     nativeCurrency,
     source: 'quote',
     asOf: quote.asOf,
     updatedAt: quote.fetchedAt,
   };
+}
+
+/** Change from the previous close to the quoted price, as a percentage. */
+export function dayChangePercent(quote: Pick<Quote, 'price' | 'previousClose'>): number | null {
+  const previous = quote.previousClose;
+  if (previous === undefined || !Number.isFinite(previous) || previous <= 0) return null;
+  return ((quote.price - previous) / previous) * 100;
+}
+
+/**
+ * Today's change in value of an open holding: the latest value less its value at the previous
+ * close. `null` without a price or a day change.
+ */
+export function dayChangeValue(holding: Pick<Holding, 'quantity'>, price: ResolvedPrice | null | undefined): number | null {
+  if (!price || price.price === null || price.dayChangePercent === null || holding.quantity <= EPSILON) return null;
+  const value = price.price * holding.quantity;
+  return value - value / (1 + price.dayChangePercent / 100);
+}
+
+export interface DayChangeTotal {
+  /** Sum of today's change across holdings that have one. */
+  change: number;
+  /** The change as a percentage of those holdings' value at the previous close, or `null` when there are none. */
+  percent: number | null;
+  /** Open holdings without a day change. */
+  missing: number;
+}
+
+/** Today's change across open holdings, counting the ones without a day change. */
+export function totalDayChange(
+  holdings: Holding[],
+  prices: Record<string, ResolvedPrice | null | undefined>,
+): DayChangeTotal {
+  let change = 0;
+  let previousValue = 0;
+  let missing = 0;
+  for (const holding of holdings) {
+    if (holding.quantity <= EPSILON) continue;
+    const price = prices[holding.symbol];
+    const value = dayChangeValue(holding, price);
+    if (value === null || !price?.price) {
+      missing += 1;
+      continue;
+    }
+    change += value;
+    previousValue += price.price * holding.quantity - value;
+  }
+  return { change, percent: previousValue > EPSILON ? (change / previousValue) * 100 : null, missing };
 }
 
 export interface Unrealised {
@@ -332,8 +386,14 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
+/** `{ previousClose }` when `value` is a usable price, else nothing. */
+function previousCloseFrom(value: unknown): { previousClose?: number } {
+  const previousClose = Number(value);
+  return value !== undefined && value !== null && Number.isFinite(previousClose) && previousClose > 0 ? { previousClose } : {};
+}
+
 /** Read an Alpha Vantage `GLOBAL_QUOTE` response. */
-export function parseAlphaVantageQuote(json: unknown): { price: number; asOf: string } {
+export function parseAlphaVantageQuote(json: unknown): { price: number; previousClose?: number; asOf: string } {
   const record = asRecord(json);
   if (!record) throw new PriceSourceError('Unexpected response from Alpha Vantage.');
   const notice = record.Note ?? record.Information;
@@ -346,11 +406,11 @@ export function parseAlphaVantageQuote(json: unknown): { price: number; asOf: st
   const price = Number(quote?.['05. price']);
   if (!quote || !Number.isFinite(price) || price <= 0) throw new PriceSourceError('Symbol not found.');
   const day = quote['07. latest trading day'];
-  return { price, asOf: typeof day === 'string' ? day : '' };
+  return { price, ...previousCloseFrom(quote['08. previous close']), asOf: typeof day === 'string' ? day : '' };
 }
 
-/** Read a Finnhub `/quote` response (`c` is the current price, `t` a unix time). */
-export function parseFinnhubQuote(json: unknown): { price: number; asOf: string } {
+/** Read a Finnhub `/quote` response (`c` is the current price, `pc` the previous close, `t` a unix time). */
+export function parseFinnhubQuote(json: unknown): { price: number; previousClose?: number; asOf: string } {
   const record = asRecord(json);
   if (!record) throw new PriceSourceError('Unexpected response from Finnhub.');
   if (typeof record.error === 'string') {
@@ -359,11 +419,16 @@ export function parseFinnhubQuote(json: unknown): { price: number; asOf: string 
   const price = Number(record.c);
   if (!Number.isFinite(price) || price <= 0) throw new PriceSourceError('Symbol not found.');
   const time = Number(record.t);
-  return { price, asOf: Number.isFinite(time) && time > 0 ? new Date(time * 1000).toISOString() : '' };
+  return {
+    price,
+    ...previousCloseFrom(record.pc),
+    asOf: Number.isFinite(time) && time > 0 ? new Date(time * 1000).toISOString() : '',
+  };
 }
 
 export interface RelayQuote {
   price: number;
+  previousClose?: number;
   currency: string;
   asOf: string;
 }
@@ -387,6 +452,7 @@ export function parseRelayResponse(json: unknown, asked: string[]): Record<strin
       const time = Number(quote.time);
       out[symbol] = {
         price,
+        ...previousCloseFrom(quote.previousClose),
         currency: typeof quote.currency === 'string' ? quote.currency : '',
         asOf: Number.isFinite(time) && time > 0 ? new Date(time * 1000).toISOString() : '',
       };

@@ -30,6 +30,14 @@ describe('parseChart', () => {
     expect(parseChart(chart(2150.5))).toEqual({ price: 2150.5, currency: 'GBp', time: 1790000000 });
   });
 
+  it('reads the previous close, preferring previousClose over chartPreviousClose', () => {
+    const body = chart(2150.5);
+    body.chart.result[0].meta.chartPreviousClose = 2100;
+    expect(parseChart(body).previousClose).toBe(2100);
+    body.chart.result[0].meta.previousClose = 2110;
+    expect(parseChart(body).previousClose).toBe(2110);
+  });
+
   it('reports unknown symbols', () => {
     expect(() => parseChart({ chart: { result: null, error: { code: 'Not Found', description: 'No data found' } } })).toThrow(
       'Symbol not found.',

@@ -4,7 +4,7 @@
  * pages, so the app asks this worker instead.
  *
  *   GET /?symbols=VOD.L,SAP.DE,AAPL
- *   → { "quotes": { "VOD.L": { "price": 72.46, "currency": "GBp", "time": 1790000000 } },
+ *   → { "quotes": { "VOD.L": { "price": 72.46, "previousClose": 71.9, "currency": "GBp", "time": 1790000000 } },
  *       "errors": { "NOPE.L": "Symbol not found." } }
  *
  * Symbols use Yahoo's spelling (London .L, Xetra .DE, Paris .PA, Amsterdam
@@ -33,7 +33,10 @@ function json(body, status, origin) {
   return new Response(JSON.stringify(body), { status, headers });
 }
 
-/** Read Yahoo's chart response into `{ price, currency, time }`, or throw a readable error. */
+/**
+ * Read Yahoo's chart response into `{ price, previousClose, currency, time }`, or throw a
+ * readable error. `previousClose` is the last session's close, left out when Yahoo has none.
+ */
 export function parseChart(body) {
   const error = body?.chart?.error;
   if (error) throw new Error(error.code === 'Not Found' ? 'Symbol not found.' : String(error.description || error.code));
@@ -41,7 +44,10 @@ export function parseChart(body) {
   const price = Number(meta?.regularMarketPrice);
   if (!meta || !Number.isFinite(price) || price <= 0) throw new Error('Symbol not found.');
   const time = Number(meta.regularMarketTime);
-  return { price, currency: typeof meta.currency === 'string' ? meta.currency : '', time: Number.isFinite(time) ? time : 0 };
+  const result = { price, currency: typeof meta.currency === 'string' ? meta.currency : '', time: Number.isFinite(time) ? time : 0 };
+  const previousClose = Number(meta.previousClose ?? meta.chartPreviousClose);
+  if (Number.isFinite(previousClose) && previousClose > 0) result.previousClose = previousClose;
+  return result;
 }
 
 async function fromYahoo(symbol) {

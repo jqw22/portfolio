@@ -26,7 +26,16 @@ import {
   type HoldingSort,
   type HoldingSortKey,
 } from '@/lib/portfolio';
-import { formatFetchedOn, isPence, totalUnrealised, unrealisedGain, type ResolvedPrice, type UnrealisedTotal } from '@/lib/prices';
+import {
+  dayChangeValue,
+  formatFetchedOn,
+  isPence,
+  totalDayChange,
+  totalUnrealised,
+  unrealisedGain,
+  type ResolvedPrice,
+  type UnrealisedTotal,
+} from '@/lib/prices';
 
 interface HoldingsTableProps {
   holdings: Holding[];
@@ -40,7 +49,7 @@ interface HoldingsTableProps {
   showAccount?: boolean;
   /** Cash rows to list after the positions, one per account; included in the total. */
   cashBalances?: CashBalance[];
-  /** Latest prices by symbol. When given, the Latest price, Current value and Unrealised columns are shown. */
+  /** Latest prices by symbol. When given, the Latest price, Day change, Current value and Unrealised columns are shown. */
   prices?: Record<string, ResolvedPrice | null>;
   /** Controls shown on the right of the card header. */
   actions?: ReactNode;
@@ -140,6 +149,16 @@ function LatestPriceCell({ price, currency }: { price: ResolvedPrice | null | un
   );
 }
 
+function DayChangeCell({ percent, change, currency }: { percent: number | null; change: number | null; currency: string }) {
+  if (percent === null) return <span className="text-muted-foreground">—</span>;
+  return (
+    <div className={pnlClass(percent)}>
+      <span className="font-medium">{formatPercent(percent, 1)}</span>
+      {change !== null ? <p className="mt-0.5 text-xs">{formatWhole(change, currency)}</p> : null}
+    </div>
+  );
+}
+
 export function HoldingsTable({
   holdings,
   currency,
@@ -157,6 +176,7 @@ export function HoldingsTable({
   const rows = sort ? sortHoldings(holdings, sort) : holdings;
   const showMarket = prices !== undefined;
   const unrealisedTotal = prices ? totalUnrealised(holdings, prices) : null;
+  const dayTotal = prices ? totalDayChange(holdings, prices) : null;
   const totalCash = cashBalances.reduce((sum, cash) => sum + cash.balance, 0);
   const totalCostBasis = holdings.reduce((sum, holding) => sum + holding.costBasis, 0) + totalCash;
   const totalRealized = holdings.reduce((sum, holding) => sum + holding.realizedPnl, 0);
@@ -178,11 +198,11 @@ export function HoldingsTable({
       </CardHeader>
       <CardContent className="px-0">
         {/* Fixed layout keeps columns lined up when several of these tables are stacked. */}
-        <Table className={cn('table-fixed', showMarket ? 'min-w-[64rem]' : 'min-w-[48rem]')}>
+        <Table className={cn('table-fixed', showMarket ? 'min-w-[68rem]' : 'min-w-[48rem]')}>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               {showAccount ? <TableHead className="w-36 pl-6">Account</TableHead> : null}
-              {/* Fixed widths keep stock, label and shares together; the money columns share the rest. */}
+              {/* Stock and label get fixed widths; the number columns split the rest evenly (the last is wider by its padding). */}
               <SortableHead
                 label="Stock"
                 sortKey="stock"
@@ -190,14 +210,15 @@ export function HoldingsTable({
                 onSortChange={onSortChange}
                 className={cn('w-44', !showAccount && 'w-48 pl-6')}
               />
-              <SortableHead label="Label" sortKey="label" sort={sort} onSortChange={onSortChange} className="w-32" />
-              <TableHead className="w-24 text-right">Shares</TableHead>
+              <SortableHead label="Label" sortKey="label" sort={sort} onSortChange={onSortChange} className="w-24" />
+              <TableHead className="text-right">Shares</TableHead>
               <TableHead className="text-right">Avg cost</TableHead>
               <TableHead className="text-right">Cost basis</TableHead>
-              {showMarket ? <TableHead className="w-40 text-right">Latest price</TableHead> : null}
+              {showMarket ? <TableHead className="text-right">Latest price</TableHead> : null}
+              {showMarket ? <TableHead className="text-right">Day change</TableHead> : null}
               {showMarket ? <TableHead className="text-right">Current value</TableHead> : null}
               {showMarket ? <TableHead className="text-right">Unrealised</TableHead> : null}
-              <TableHead className="pr-6 text-right">Realised P&L</TableHead>
+              <TableHead className="w-28 pr-6 text-right">Realised P&L</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -255,6 +276,19 @@ export function HoldingsTable({
                   {showMarket ? (
                     <TableCell className="text-right tabular-nums">
                       {isOpen ? <LatestPriceCell price={price} currency={currency} /> : '—'}
+                    </TableCell>
+                  ) : null}
+                  {showMarket ? (
+                    <TableCell className="text-right tabular-nums">
+                      {isOpen ? (
+                        <DayChangeCell
+                          percent={price?.dayChangePercent ?? null}
+                          change={dayChangeValue(holding, price)}
+                          currency={currency}
+                        />
+                      ) : (
+                        '—'
+                      )}
                     </TableCell>
                   ) : null}
                   {showMarket ? (
@@ -324,6 +358,7 @@ export function HoldingsTable({
                 {showMarket ? (
                   <>
                     <TableCell className="text-right text-muted-foreground">—</TableCell>
+                    <TableCell className="text-right text-muted-foreground">—</TableCell>
                     <TableCell
                       className={cn('text-right font-medium tabular-nums', cash.balance < 0 && 'text-destructive')}
                     >
@@ -346,6 +381,18 @@ export function HoldingsTable({
                   {formatWhole(totalCostBasis, currency)}
                 </TableCell>
                 {showMarket ? <TableCell /> : null}
+                {dayTotal ? (
+                  <TableCell className="text-right tabular-nums">
+                    {dayTotal.percent !== null ? (
+                      <div className={pnlClass(dayTotal.change)}>
+                        <span className="font-semibold">{formatPercent(dayTotal.percent, 1)}</span>
+                        <p className="mt-0.5 text-xs font-normal">{formatWhole(dayTotal.change, currency)}</p>
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                ) : null}
                 {valueTotal ? (
                   <TableCell className="text-right tabular-nums">
                     <span className="font-semibold">{formatWhole(valueTotal.value, currency)}</span>
