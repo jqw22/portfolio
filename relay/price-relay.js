@@ -33,20 +33,46 @@ function json(body, status, origin) {
   return new Response(JSON.stringify(body), { status, headers });
 }
 
+/** The day (in the exchange's own time zone) that a unix time falls on. */
+function marketDay(time, offset) {
+  return Math.floor((time + offset) / 86400);
+}
+
+/**
+ * The last daily close before the day of `time`, from the chart's daily candles. Used when Yahoo
+ * leaves `previousClose` out of the summary, which it does for some symbols.
+ */
+function lastCloseBefore(result, time, offset) {
+  const stamps = result?.timestamp;
+  const closes = result?.indicators?.quote?.[0]?.close;
+  if (!Array.isArray(stamps) || !Array.isArray(closes) || !time) return undefined;
+  const today = marketDay(time, offset);
+  for (let index = Math.min(stamps.length, closes.length) - 1; index >= 0; index -= 1) {
+    const close = Number(closes[index]);
+    if (marketDay(Number(stamps[index]), offset) < today && Number.isFinite(close) && close > 0) return close;
+  }
+  return undefined;
+}
+
 /**
  * Read Yahoo's chart response into `{ price, previousClose, currency, time }`, or throw a
  * readable error. `previousClose` is the last session's close, left out when Yahoo has none.
+ * The chart covers several days, so its `chartPreviousClose` (the close before the first day) is
+ * not used.
  */
 export function parseChart(body) {
   const error = body?.chart?.error;
   if (error) throw new Error(error.code === 'Not Found' ? 'Symbol not found.' : String(error.description || error.code));
-  const meta = body?.chart?.result?.[0]?.meta;
+  const chartResult = body?.chart?.result?.[0];
+  const meta = chartResult?.meta;
   const price = Number(meta?.regularMarketPrice);
   if (!meta || !Number.isFinite(price) || price <= 0) throw new Error('Symbol not found.');
   const time = Number(meta.regularMarketTime);
   const result = { price, currency: typeof meta.currency === 'string' ? meta.currency : '', time: Number.isFinite(time) ? time : 0 };
-  const previousClose = Number(meta.previousClose ?? meta.chartPreviousClose);
-  if (Number.isFinite(previousClose) && previousClose > 0) result.previousClose = previousClose;
+  const offset = Number.isFinite(Number(meta.gmtoffset)) ? Number(meta.gmtoffset) : 0;
+  const summary = Number(meta.previousClose);
+  const previousClose = Number.isFinite(summary) && summary > 0 ? summary : lastCloseBefore(chartResult, result.time, offset);
+  if (previousClose !== undefined) result.previousClose = previousClose;
   return result;
 }
 
@@ -56,7 +82,7 @@ async function fromYahoo(symbol) {
   for (const host of YAHOO_HOSTS) {
     let response;
     try {
-      response = await fetch(`${host}/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d`, {
+      response = await fetch(`${host}/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d`, {
         headers: { 'user-agent': 'Mozilla/5.0 (compatible; LedgerPriceRelay/1.0)', accept: 'application/json' },
       });
     } catch {
@@ -76,7 +102,7 @@ async function fromYahoo(symbol) {
 
 async function quote(symbol, ctx) {
   const cache = caches.default;
-  const key = new Request(`https://ledger-price-relay.cache/yahoo/${encodeURIComponent(symbol)}`);
+  const key = new Request(`https://ledger-price-relay.cache/yahoo-v2/${encodeURIComponent(symbol)}`);
   const hit = await cache.match(key);
   if (hit) return hit.json();
   const result = await fromYahoo(symbol);

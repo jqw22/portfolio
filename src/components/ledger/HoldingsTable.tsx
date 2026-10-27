@@ -153,7 +153,7 @@ function LatestPriceCell({ price, currency }: { price: ResolvedPrice | null | un
 function missingDayChangeReason(price: ResolvedPrice | null | undefined): string {
   if (!price) return 'No price yet. Press Refresh, or check the symbol in Prices.';
   if (price.source === 'manual') return 'Prices entered by hand have no day change. Use Fetch price in Prices to switch back to fetched prices.';
-  return `The price source sent no previous close with this price (fetched ${formatFetchedOn(price.updatedAt) || 'at an unknown time'}). Press Refresh to fetch it again.`;
+  return `The price source sent no previous close with this price (fetched ${formatFetchedOn(price.updatedAt) || 'at an unknown time'}). Press Refresh to fetch it again, and if it stays like this, redeploy the price relay with the latest price-relay.js.`;
 }
 
 function DayChangeCell({

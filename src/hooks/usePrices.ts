@@ -211,6 +211,8 @@ export function usePrices(symbols: string[], currency: string) {
             continue;
           }
           let failure: { message: string; rateLimited: boolean } | null = null;
+          /** A price without a previous close, kept while later sources are asked for one with it. */
+          let partial: Quote | null = null;
           for (const plan of plans) {
             if (blocked.has(plan.provider)) {
               failure = { message: `${PROVIDER_NAMES[plan.provider]} daily limit reached.`, rateLimited: true };
@@ -225,18 +227,28 @@ export function usePrices(symbols: string[], currency: string) {
               const quote = relayAnswer
                 ? toQuote(plan, fromRelayAnswer(relayAnswer))
                 : await fetchQuote(plan, settings, signal);
+              failure = null;
+              if (quote.previousClose === undefined) {
+                partial ??= quote;
+                continue;
+              }
+              partial = null;
               setCache((prev) => ({ ...prev, quotes: { ...prev.quotes, [symbol]: quote } }));
               result.updated += 1;
-              failure = null;
               break;
             } catch (error) {
               if (signal.aborted) return result;
               const rateLimited = error instanceof PriceSourceError && error.rateLimited;
               if (rateLimited) blocked.add(plan.provider);
-              failure = { message: error instanceof Error ? error.message : 'Failed to fetch.', rateLimited };
+              if (!partial) failure = { message: error instanceof Error ? error.message : 'Failed to fetch.', rateLimited };
             }
           }
-          if (failure) {
+          if (partial) {
+            // No source had a previous close, so use the best price found without one.
+            const quote = partial;
+            setCache((prev) => ({ ...prev, quotes: { ...prev.quotes, [symbol]: quote } }));
+            result.updated += 1;
+          } else if (failure) {
             result.failed.push({ symbol, message: failure.message });
             if (failure.rateLimited) result.rateLimited = true;
           }
@@ -263,17 +275,27 @@ export function usePrices(symbols: string[], currency: string) {
     if (plans.length === 0) throw new Error('Add an API key that covers this symbol.');
     // Report every source's failure, so it's clear which step went wrong.
     const failures: string[] = [];
+    let partial: Quote | null = null;
+    const keep = (quote: Quote) => {
+      setCache((prev) => ({ ...prev, quotes: { ...prev.quotes, [symbol]: quote } }));
+      return quote;
+    };
     for (const plan of plans) {
       try {
         const quote = await fetchQuote(plan, using);
-        setCache((prev) => ({ ...prev, quotes: { ...prev.quotes, [symbol]: quote } }));
-        return quote;
+        // Without a previous close there's no day change, so see if a later source has one.
+        if (quote.previousClose === undefined) {
+          partial ??= quote;
+          continue;
+        }
+        return keep(quote);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to fetch.';
         const name = PROVIDER_NAMES[plan.provider];
         failures.push(message.toLowerCase().includes(name.toLowerCase()) ? message : `${name}: ${message}`);
       }
     }
+    if (partial) return keep(partial);
     throw new Error(failures.map((failure) => failure.charAt(0).toUpperCase() + failure.slice(1)).join(' '));
   }, []);
 

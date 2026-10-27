@@ -30,12 +30,30 @@ describe('parseChart', () => {
     expect(parseChart(chart(2150.5))).toEqual({ price: 2150.5, currency: 'GBp', time: 1790000000 });
   });
 
-  it('reads the previous close, preferring previousClose over chartPreviousClose', () => {
+  it('reads the previous close from the summary', () => {
     const body = chart(2150.5);
-    body.chart.result[0].meta.chartPreviousClose = 2100;
-    expect(parseChart(body).previousClose).toBe(2100);
     body.chart.result[0].meta.previousClose = 2110;
     expect(parseChart(body).previousClose).toBe(2110);
+  });
+
+  it('works the previous close out from daily closes when the summary has none', () => {
+    const day = 86400;
+    const time = 1790000000;
+    const body = chart(2150.5);
+    Object.assign(body.chart.result[0], {
+      // Three earlier days (one with no close) and today's unfinished day.
+      timestamp: [time - 3 * day, time - 2 * day, time - day, time - 60],
+      indicators: { quote: [{ close: [2000, 2050, null, 2150.5] }] },
+    });
+    // chartPreviousClose is the close before the whole chart, so it is not used.
+    body.chart.result[0].meta.chartPreviousClose = 1900;
+    expect(parseChart(body).previousClose).toBe(2050);
+  });
+
+  it('leaves the previous close out when there is nothing to work it out from', () => {
+    const body = chart(2150.5);
+    body.chart.result[0].meta.chartPreviousClose = 1900;
+    expect(parseChart(body)).not.toHaveProperty('previousClose');
   });
 
   it('reports unknown symbols', () => {
