@@ -149,8 +149,30 @@ function LatestPriceCell({ price, currency }: { price: ResolvedPrice | null | un
   );
 }
 
-function DayChangeCell({ percent, change, currency }: { percent: number | null; change: number | null; currency: string }) {
-  if (percent === null) return <span className="text-muted-foreground">—</span>;
+/** Why a holding has no day change, shown on hover so a gap can be tracked down. */
+function missingDayChangeReason(price: ResolvedPrice | null | undefined): string {
+  if (!price) return 'No price yet. Press Refresh, or check the symbol in Prices.';
+  if (price.source === 'manual') return 'Prices entered by hand have no day change. Use Fetch price in Prices to switch back to fetched prices.';
+  return `The price source sent no previous close with this price (fetched ${formatFetchedOn(price.updatedAt) || 'at an unknown time'}). Press Refresh to fetch it again.`;
+}
+
+function DayChangeCell({
+  price,
+  change,
+  currency,
+}: {
+  price: ResolvedPrice | null | undefined;
+  change: number | null;
+  currency: string;
+}) {
+  const percent = price?.dayChangePercent ?? null;
+  if (percent === null) {
+    return (
+      <span className="text-muted-foreground" title={missingDayChangeReason(price)}>
+        —
+      </span>
+    );
+  }
   return (
     <div className={pnlClass(percent)}>
       <span className="font-medium">{formatPercent(percent, 1)}</span>
@@ -282,7 +304,7 @@ export function HoldingsTable({
                     <TableCell className="text-right tabular-nums">
                       {isOpen ? (
                         <DayChangeCell
-                          percent={price?.dayChangePercent ?? null}
+                          price={price}
                           change={dayChangeValue(holding, price)}
                           currency={currency}
                         />
