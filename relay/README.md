@@ -37,4 +37,7 @@ tab. You should see a price for each symbol.
 - London prices come back in pence (`GBp`); Ledger converts them to pounds.
 - The relay also passes on the previous close, which Ledger uses for the Day
   change column. A relay deployed before this was added shows "—" there until
-  you paste in the latest `price-relay.js` and deploy again.
+  you paste in the latest `price-relay.js` and deploy again. When Yahoo
+  leaves the previous close out (it does for some symbols), the relay works it
+  out from the last few days' closing prices; that needs the relay from
+  27 Oct 2026 or later.
