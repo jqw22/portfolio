@@ -16,6 +16,7 @@ import {
   quoteCurrencyFor,
   quoteSymbolFor,
   resolvePrice,
+  guessQuoteCurrency,
   totalDayChange,
   totalUnrealised,
   unrealisedGain,
@@ -294,5 +295,37 @@ describe('response parsers', () => {
     const rates = parseFxRates({ base: 'EUR', date: '2026-09-29', rates: { GBP: 0.85, XXX: 'no', ZZZ: 0 } }, 7);
     expect(rates).toEqual({ base: 'EUR', date: '2026-09-29', rates: { GBP: 0.85 }, fetchedAt: 7 });
     expect(() => parseFxRates({ nope: true }, 0)).toThrow(PriceSourceError);
+  });
+});
+
+describe('guessQuoteCurrency', () => {
+  const relayQuote = (price: number, currency: string): Quote => ({ ...quote(price, currency), provider: 'relay' });
+
+  it('keeps the guess without an earlier quote', () => {
+    expect(guessQuoteCurrency(90, 'GBX', undefined)).toBe('GBX');
+  });
+
+  it('reuses the currency an earlier quote reported', () => {
+    expect(guessQuoteCurrency(91, 'GBX', relayQuote(90, 'GBP'))).toBe('GBP');
+    expect(guessQuoteCurrency(91, 'GBX', { ...quote(90, 'USD'), currencyGuessed: false })).toBe('USD');
+  });
+
+  it('switches pounds and pence when the price is about 100 times off the last one', () => {
+    expect(guessQuoteCurrency(21.5, 'GBX', quote(2150, 'GBX'))).toBe('GBP');
+    expect(guessQuoteCurrency(2150, 'GBP', quote(21.5, 'GBP'))).toBe('GBX');
+    expect(guessQuoteCurrency(2150, 'GBX', relayQuote(21.4, 'GBP'))).toBe('GBX');
+  });
+
+  it('keeps the unit for ordinary moves', () => {
+    expect(guessQuoteCurrency(1900, 'GBX', quote(2150, 'GBX'))).toBe('GBX');
+    expect(guessQuoteCurrency(300, 'GBX', quote(2150, 'GBX'))).toBe('GBX');
+  });
+});
+
+describe('reported currencies', () => {
+  it('lets a currency the relay reported win over one set in Prices', () => {
+    const settings = settingsWith({ symbols: { 'VUSA.L': { quoteCurrency: 'GBX' } } });
+    const quotes = { 'VUSA.L': { ...quote(90, 'GBP'), provider: 'relay' as const } };
+    expect(resolvePrice('VUSA.L', settings, quotes, fx, 'GBP')?.price).toBe(90);
   });
 });

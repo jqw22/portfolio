@@ -49,6 +49,43 @@ export interface Quote {
   provider: PriceProviderId;
   /** The symbol the source was asked for. */
   quoteSymbol: string;
+  /**
+   * True when the source didn't say which currency it quoted in (Alpha Vantage, Finnhub), so
+   * `currency` is a guess. Missing on older quotes, where only the relay's are taken as reported.
+   */
+  currencyGuessed?: boolean;
+}
+
+/** Whether a quote's currency came from Ledger's guess rather than from the source. */
+export function isCurrencyGuessed(quote: Pick<Quote, 'currencyGuessed' | 'provider'>): boolean {
+  return quote.currencyGuessed ?? quote.provider !== 'relay';
+}
+
+function isSterling(currency: string): boolean {
+  return isPence(currency) || currency.toUpperCase() === 'GBP';
+}
+
+function inPence(price: number, currency: string): number {
+  return isPence(currency) ? price : price * 100;
+}
+
+/**
+ * The currency for a new quote from a source that doesn't say which one it used. London prices
+ * can be in pounds or pence, and the exchange suffix alone can't tell, so:
+ * - a currency an earlier quote for the symbol reported is reused;
+ * - a sterling price that is about 100 times off the last price is taken to be in the other unit.
+ */
+export function guessQuoteCurrency(price: number, guess: string, previous: Quote | undefined): string {
+  if (!previous) return guess;
+  const currency = isCurrencyGuessed(previous) ? guess : previous.currency;
+  if (!isSterling(currency) || !isSterling(previous.currency)) return currency;
+  const before = inPence(previous.price, previous.currency);
+  const asPence = Math.abs(Math.log(price / before));
+  const asPounds = Math.abs(Math.log((price * 100) / before));
+  // Only switch when the other unit fits clearly better (over a 10x move either way).
+  if (isPence(currency) && asPounds + Math.log(10) < asPence) return 'GBP';
+  if (!isPence(currency) && asPence + Math.log(10) < asPounds) return 'GBX';
+  return currency;
 }
 
 /** Exchange rates: one unit of `base` buys `rates[code]` of each currency. */
@@ -176,6 +213,8 @@ export interface QuotePlan {
   quoteSymbol: string;
   /** Currency the price is expected in; the relay's own answer wins. */
   currency: string;
+  /** True when `currency` is the one set for the symbol in Prices rather than worked out. */
+  currencySet?: boolean;
 }
 
 /**
@@ -187,10 +226,14 @@ export function planQuotes(symbol: string, settings: PriceSettings): QuotePlan[]
   const own = settings.symbols[symbol] ?? {};
   const quoteSymbol = own.quoteSymbol?.trim().toUpperCase() || quoteSymbolFor(symbol);
   const currency = own.quoteCurrency || quoteCurrencyFor(quoteSymbol);
+  // Only marked when set, so plans for symbols without settings stay as they were.
+  const set = own.quoteCurrency ? { currencySet: true } : {};
   const plans: QuotePlan[] = [];
-  if (parseRelayUrl(settings.relayUrl)) plans.push({ provider: 'relay', quoteSymbol: yahooSymbolFor(quoteSymbol), currency });
-  if (settings.finnhubKey.trim() && isUsSymbol(quoteSymbol)) plans.push({ provider: 'finnhub', quoteSymbol, currency });
-  if (settings.alphaVantageKey.trim()) plans.push({ provider: 'alphavantage', quoteSymbol, currency });
+  if (parseRelayUrl(settings.relayUrl)) {
+    plans.push({ provider: 'relay', quoteSymbol: yahooSymbolFor(quoteSymbol), currency, ...set });
+  }
+  if (settings.finnhubKey.trim() && isUsSymbol(quoteSymbol)) plans.push({ provider: 'finnhub', quoteSymbol, currency, ...set });
+  if (settings.alphaVantageKey.trim()) plans.push({ provider: 'alphavantage', quoteSymbol, currency, ...set });
   return plans;
 }
 
@@ -257,8 +300,8 @@ export function resolvePrice(
   }
   const quote = quotes[symbol];
   if (!quote) return null;
-  // A currency set after the quote was fetched still applies.
-  const nativeCurrency = own.quoteCurrency || quote.currency;
+  // A currency set after the quote was fetched still applies, unless the source said which it used.
+  const nativeCurrency = (isCurrencyGuessed(quote) && own.quoteCurrency) || quote.currency;
   return {
     price: convertAmount(quote.price, nativeCurrency, currency, fx),
     nativePrice: quote.price,

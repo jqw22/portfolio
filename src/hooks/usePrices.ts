@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchAlphaVantageQuote, fetchFinnhubQuote, fetchFxRates, fetchRelayQuotes, RELAY_BATCH } from '@/lib/priceSources';
 import {
   DEFAULT_PRICE_SETTINGS,
+  guessQuoteCurrency,
   planQuotes,
   PriceSourceError,
   resolvePrice,
@@ -93,11 +94,13 @@ async function callProvider(
   }
 }
 
-function toQuote(plan: QuotePlan, found: Found): Quote {
+function toQuote(plan: QuotePlan, found: Found, previous: Quote | undefined): Quote {
+  const own = plan.currencySet;
   return {
     price: found.price,
     ...(found.previousClose !== undefined ? { previousClose: found.previousClose } : {}),
-    currency: found.currency ?? plan.currency,
+    currency: found.currency ?? (own ? plan.currency : guessQuoteCurrency(found.price, plan.currency, previous)),
+    currencyGuessed: found.currency === undefined,
     asOf: found.asOf,
     fetchedAt: Date.now(),
     provider: plan.provider,
@@ -105,8 +108,13 @@ function toQuote(plan: QuotePlan, found: Found): Quote {
   };
 }
 
-async function fetchQuote(plan: QuotePlan, settings: PriceSettings, signal?: AbortSignal): Promise<Quote> {
-  return toQuote(plan, await callProvider(plan, settings, signal));
+async function fetchQuote(
+  plan: QuotePlan,
+  settings: PriceSettings,
+  previous: Quote | undefined,
+  signal?: AbortSignal,
+): Promise<Quote> {
+  return toQuote(plan, await callProvider(plan, settings, signal), previous);
 }
 
 /** Ask the relay for many symbols in as few requests as it allows. A failed request becomes an error for each of its symbols. */
@@ -225,8 +233,8 @@ export function usePrices(symbols: string[], currency: string) {
             try {
               const relayAnswer = plan.provider === 'relay' ? relayAnswers[plan.quoteSymbol] : undefined;
               const quote = relayAnswer
-                ? toQuote(plan, fromRelayAnswer(relayAnswer))
-                : await fetchQuote(plan, settings, signal);
+                ? toQuote(plan, fromRelayAnswer(relayAnswer), last)
+                : await fetchQuote(plan, settings, last, signal);
               failure = null;
               if (quote.previousClose === undefined) {
                 partial ??= quote;
@@ -282,7 +290,7 @@ export function usePrices(symbols: string[], currency: string) {
     };
     for (const plan of plans) {
       try {
-        const quote = await fetchQuote(plan, using);
+        const quote = await fetchQuote(plan, using, quotesRef.current[symbol]);
         // Without a previous close there's no day change, so see if a later source has one.
         if (quote.previousClose === undefined) {
           partial ??= quote;
