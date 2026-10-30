@@ -96,6 +96,8 @@ function SnapshotTooltip({
       <p className="font-medium">{fullDayLabel(row.date)}</p>
       {payload
         ?.filter((entry) => typeof entry.value === 'number')
+        // Highest value first, so the list reads top to bottom like the lines on the chart.
+        .sort((a, b) => Number(b.value) - Number(a.value))
         .map((entry) => (
           <div key={String(entry.dataKey)} className="flex items-center justify-between gap-4">
             <span className="flex items-center gap-1.5 text-muted-foreground">
