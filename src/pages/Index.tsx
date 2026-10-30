@@ -17,6 +17,7 @@ import { TransactionDialog } from '@/components/ledger/TransactionDialog';
 import { TransactionsTable } from '@/components/ledger/TransactionsTable';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ToastAction } from '@/components/ui/toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAccountSnapshots } from '@/hooks/useAccountSnapshots';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
@@ -215,8 +216,23 @@ export default function Index() {
           : result.skipped > 0 && problems.length === 0
             ? 'Prices are up to date'
             : 'No prices updated',
-      description: [...problems, ...kept].join(' ') || undefined,
+      // One line each; selectable so the reasons can be copied.
+      description:
+        problems.length + kept.length > 0 ? (
+          <span className="block whitespace-pre-line select-text">{[...problems, ...kept].join('\n')}</span>
+        ) : undefined,
       variant: result.updated === 0 && problems.length > 0 ? 'destructive' : undefined,
+      // Problems stay until closed, with a button to copy them.
+      ...(problems.length > 0
+        ? {
+            duration: Infinity,
+            action: (
+              <ToastAction altText="Copy the problems" onClick={() => void navigator.clipboard?.writeText(problems.join('\n'))}>
+                Copy
+              </ToastAction>
+            ),
+          }
+        : {}),
     });
   };
 
