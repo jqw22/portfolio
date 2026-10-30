@@ -50,9 +50,10 @@ describe('symbols and currencies', () => {
     expect(quoteSymbolFor('VOD.L')).toBe('VOD.LON');
     expect(quoteSymbolFor('SAP.DE')).toBe('SAP.DEX');
     expect(quoteSymbolFor('MC.PA')).toBe('MC.PAR');
+    expect(quoteSymbolFor('BRK.B')).toBe('BRK-B');
+    expect(yahooSymbolFor(quoteSymbolFor('BRK.B'))).toBe('BRK-B');
     expect(quoteSymbolFor('ASML.AS')).toBe('ASML.AMS');
     expect(quoteSymbolFor('BP.LON')).toBe('BP.LON');
-    expect(quoteSymbolFor('BRK.B')).toBe('BRK.B');
   });
 
   it('infers the quote currency from the exchange', () => {

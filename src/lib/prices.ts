@@ -182,10 +182,14 @@ function splitSuffix(symbol: string): [string, string | undefined] {
   return [value.slice(0, dot), value.slice(dot + 1)];
 }
 
-/** The symbol to ask the price source for, e.g. `VOD.L` → `VOD.LON`. */
+/** US share classes written with a dot, e.g. `BRK.B`; the sources spell them with a dash. */
+const SHARE_CLASSES = new Set(['A', 'B']);
+
+/** The symbol to ask the price source for, e.g. `VOD.L` → `VOD.LON`, `BRK.B` → `BRK-B`. */
 export function quoteSymbolFor(symbol: string): string {
   const [base, suffix] = splitSuffix(symbol);
   if (!suffix) return base;
+  if (SHARE_CLASSES.has(suffix)) return `${base}-${suffix}`;
   return `${base}.${SUFFIX_TO_ALPHA_VANTAGE[suffix] ?? suffix}`;
 }
 
