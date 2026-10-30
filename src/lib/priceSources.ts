@@ -44,8 +44,12 @@ export async function fetchFinnhubQuote(symbol: string, key: string, signal?: Ab
   return parseFinnhubQuote(await getJson('Finnhub', `https://finnhub.io/api/v1/quote?${params}`, signal));
 }
 
-/** The relay accepts up to this many symbols a request. */
-export const RELAY_BATCH = 50;
+/**
+ * Symbols per relay request. The relay accepts up to 50, but a free Cloudflare Worker may make
+ * only 50 outside calls per request and each symbol can take four (cache read, two Yahoo hosts,
+ * cache write), so ask for fewer at a time.
+ */
+export const RELAY_BATCH = 10;
 
 /** Latest prices for Yahoo-style `symbols` from the user's price relay. */
 export async function fetchRelayQuotes(relayUrl: string, symbols: string[], signal?: AbortSignal) {

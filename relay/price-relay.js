@@ -85,7 +85,9 @@ async function fromYahoo(symbol) {
       response = await fetch(`${host}/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d`, {
         headers: { 'user-agent': 'Mozilla/5.0 (compatible; LedgerPriceRelay/1.0)', accept: 'application/json' },
       });
-    } catch {
+    } catch (error) {
+      // Includes Cloudflare refusing more outside calls in one request.
+      lastError = `Yahoo could not be reached (${error instanceof Error ? error.message : 'network error'}).`;
       continue;
     }
     if (response.status === 404) {
