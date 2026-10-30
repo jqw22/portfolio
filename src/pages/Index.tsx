@@ -200,9 +200,8 @@ export default function Index() {
     if (!hasKey && !result.fxFailed) return;
     const problems: string[] = [];
     if (result.rateLimited) problems.push('The daily price limit was reached; try again tomorrow.');
-    if (result.failed.length > 0 && !result.rateLimited) {
-      problems.push(`No price for ${result.failed.map((failure) => failure.symbol).join(', ')}.`);
-    }
+    // Name each source's reason, so a failing relay shows up even when the daily limit hides it.
+    for (const failure of result.failed) problems.push(`No price for ${failure.symbol}. ${failure.message}`);
     if (hasKey && result.needKey.length > 0) problems.push('Add an API key in Prices, or enter prices by hand.');
     if (result.fxFailed) problems.push('Exchange rates could not be updated.');
     const kept =
