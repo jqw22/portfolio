@@ -17,6 +17,7 @@ import {
   quoteSymbolFor,
   resolvePrice,
   guessQuoteCurrency,
+  withReportedCurrency,
   totalDayChange,
   totalUnrealised,
   unrealisedGain,
@@ -308,6 +309,14 @@ describe('guessQuoteCurrency', () => {
   it('reuses the currency an earlier quote reported', () => {
     expect(guessQuoteCurrency(91, 'GBX', relayQuote(90, 'GBP'))).toBe('GBP');
     expect(guessQuoteCurrency(91, 'GBX', { ...quote(90, 'USD'), currencyGuessed: false })).toBe('USD');
+  });
+
+  it('keeps reusing a reported currency after quotes that guessed', () => {
+    const guessed: Quote = { ...quote(52, 'GBP'), currencyGuessed: true, reportedCurrency: 'GBP' };
+    expect(guessQuoteCurrency(53, 'GBX', guessed)).toBe('GBP');
+    expect(withReportedCurrency(undefined, guessed)).toEqual({ reportedCurrency: 'GBP' });
+    expect(withReportedCurrency('GBp', guessed)).toEqual({ reportedCurrency: 'GBp' });
+    expect(withReportedCurrency(undefined, quote(52, 'GBX'))).toEqual({});
   });
 
   it('switches pounds and pence when the price is about 100 times off the last one', () => {

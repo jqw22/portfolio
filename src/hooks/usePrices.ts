@@ -5,6 +5,7 @@ import {
   DEFAULT_PRICE_SETTINGS,
   guessQuoteCurrency,
   planQuotes,
+  withReportedCurrency,
   PriceSourceError,
   resolvePrice,
   type FxRates,
@@ -69,6 +70,19 @@ const PROVIDER_NAMES: Record<QuotePlan['provider'], string> = {
 
 type RelayAnswer = RelayQuote | { error: string };
 
+interface Failure {
+  message: string;
+  rateLimited: boolean;
+  earlier: Failure | null;
+}
+
+/** Every source's failure, first tried first, each named by its source. */
+function describeFailures(failure: Failure): string {
+  const messages: string[] = [];
+  for (let at: Failure | null = failure; at; at = at.earlier) messages.unshift(at.message);
+  return messages.join(' ');
+}
+
 /** What a source answered for one symbol. */
 type Found = { price: number; previousClose?: number; asOf: string; currency?: string };
 
@@ -101,6 +115,7 @@ function toQuote(plan: QuotePlan, found: Found, previous: Quote | undefined): Qu
     ...(found.previousClose !== undefined ? { previousClose: found.previousClose } : {}),
     currency: found.currency ?? (own ? plan.currency : guessQuoteCurrency(found.price, plan.currency, previous)),
     currencyGuessed: found.currency === undefined,
+    ...withReportedCurrency(found.currency, previous),
     asOf: found.asOf,
     fetchedAt: Date.now(),
     provider: plan.provider,
@@ -218,12 +233,15 @@ export function usePrices(symbols: string[], currency: string) {
             result.skipped += 1;
             continue;
           }
-          let failure: { message: string; rateLimited: boolean } | null = null;
+          /** The last source's failure, linked to the ones before it. */
+          let failure: Failure | null = null;
           /** A price without a previous close, kept while later sources are asked for one with it. */
           let partial: Quote | null = null;
           for (const plan of plans) {
+            // Alpha Vantage's daily allowance is too small to spend on a previous close alone.
+            if (partial && plan.provider === 'alphavantage') continue;
             if (blocked.has(plan.provider)) {
-              failure = { message: `${PROVIDER_NAMES[plan.provider]} daily limit reached.`, rateLimited: true };
+              failure = { message: `${PROVIDER_NAMES[plan.provider]} daily limit reached.`, rateLimited: true, earlier: failure };
               continue;
             }
             if (plan.provider === 'alphavantage') {
@@ -248,7 +266,12 @@ export function usePrices(symbols: string[], currency: string) {
               if (signal.aborted) return result;
               const rateLimited = error instanceof PriceSourceError && error.rateLimited;
               if (rateLimited) blocked.add(plan.provider);
-              if (!partial) failure = { message: error instanceof Error ? error.message : 'Failed to fetch.', rateLimited };
+              if (!partial) {
+                const message = error instanceof Error ? error.message : 'Failed to fetch.';
+                const name = PROVIDER_NAMES[plan.provider];
+                const named = message.toLowerCase().includes(name.toLowerCase()) ? message : `${name}: ${message}`;
+                failure = { message: named, rateLimited, earlier: failure };
+              }
             }
           }
           if (partial) {
@@ -257,7 +280,7 @@ export function usePrices(symbols: string[], currency: string) {
             setCache((prev) => ({ ...prev, quotes: { ...prev.quotes, [symbol]: quote } }));
             result.updated += 1;
           } else if (failure) {
-            result.failed.push({ symbol, message: failure.message });
+            result.failed.push({ symbol, message: describeFailures(failure) });
             if (failure.rateLimited) result.rateLimited = true;
           }
         }
