@@ -54,6 +54,20 @@ export interface Quote {
    * `currency` is a guess. Missing on older quotes, where only the relay's are taken as reported.
    */
   currencyGuessed?: boolean;
+  /** The currency a source last reported for this symbol, kept on later quotes that had to guess. */
+  reportedCurrency?: string;
+}
+
+/** The last currency a source reported for a symbol, from an earlier quote. */
+function lastReportedCurrency(previous: Quote | undefined): string | undefined {
+  if (!previous) return undefined;
+  return previous.reportedCurrency ?? (isCurrencyGuessed(previous) ? undefined : previous.currency);
+}
+
+/** `{ reportedCurrency }` for a new quote: the one its source reported, else the last one known. */
+export function withReportedCurrency(reported: string | undefined, previous: Quote | undefined): { reportedCurrency?: string } {
+  const currency = reported || lastReportedCurrency(previous);
+  return currency ? { reportedCurrency: currency } : {};
 }
 
 /** Whether a quote's currency came from Ledger's guess rather than from the source. */
@@ -72,12 +86,12 @@ function inPence(price: number, currency: string): number {
 /**
  * The currency for a new quote from a source that doesn't say which one it used. London prices
  * can be in pounds or pence, and the exchange suffix alone can't tell, so:
- * - a currency an earlier quote for the symbol reported is reused;
+ * - a currency a source reported for the symbol earlier is reused, even after quotes that guessed;
  * - a sterling price that is about 100 times off the last price is taken to be in the other unit.
  */
 export function guessQuoteCurrency(price: number, guess: string, previous: Quote | undefined): string {
   if (!previous) return guess;
-  const currency = isCurrencyGuessed(previous) ? guess : previous.currency;
+  const currency = lastReportedCurrency(previous) ?? guess;
   if (!isSterling(currency) || !isSterling(previous.currency)) return currency;
   const before = inPence(previous.price, previous.currency);
   const asPence = Math.abs(Math.log(price / before));

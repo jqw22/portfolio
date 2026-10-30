@@ -5,6 +5,7 @@ import {
   DEFAULT_PRICE_SETTINGS,
   guessQuoteCurrency,
   planQuotes,
+  withReportedCurrency,
   PriceSourceError,
   resolvePrice,
   type FxRates,
@@ -101,6 +102,7 @@ function toQuote(plan: QuotePlan, found: Found, previous: Quote | undefined): Qu
     ...(found.previousClose !== undefined ? { previousClose: found.previousClose } : {}),
     currency: found.currency ?? (own ? plan.currency : guessQuoteCurrency(found.price, plan.currency, previous)),
     currencyGuessed: found.currency === undefined,
+    ...withReportedCurrency(found.currency, previous),
     asOf: found.asOf,
     fetchedAt: Date.now(),
     provider: plan.provider,
@@ -222,6 +224,8 @@ export function usePrices(symbols: string[], currency: string) {
           /** A price without a previous close, kept while later sources are asked for one with it. */
           let partial: Quote | null = null;
           for (const plan of plans) {
+            // Alpha Vantage's daily allowance is too small to spend on a previous close alone.
+            if (partial && plan.provider === 'alphavantage') continue;
             if (blocked.has(plan.provider)) {
               failure = { message: `${PROVIDER_NAMES[plan.provider]} daily limit reached.`, rateLimited: true };
               continue;
