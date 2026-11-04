@@ -132,14 +132,14 @@ export function AccountValueChart({ snapshots, accounts, currency }: AccountValu
           ) : null}
         </div>
         <CardDescription>
-          Each account's positions at latest prices plus cash, saved once a day when Ledger is open. Last 3 months.
+          Each account's positions at latest prices plus cash, saved once a day when Virtual Stock Portfolio is open. Last 3 months.
         </CardDescription>
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
           <div className="rounded-lg border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
             The first snapshot is saved once your accounts have holdings or cash. The chart fills in from there, one
-            point for each day you open Ledger.
+            point for each day you open Virtual Stock Portfolio.
           </div>
         ) : (
           <ChartContainer config={config} className="aspect-auto h-72 w-full" role="img" aria-label={summary}>

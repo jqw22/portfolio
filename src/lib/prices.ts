@@ -70,7 +70,7 @@ export function withReportedCurrency(reported: string | undefined, previous: Quo
   return currency ? { reportedCurrency: currency } : {};
 }
 
-/** Whether a quote's currency came from Ledger's guess rather than from the source. */
+/** Whether a quote's currency came from the app's guess rather than from the source. */
 export function isCurrencyGuessed(quote: Pick<Quote, 'currencyGuessed' | 'provider'>): boolean {
   return quote.currencyGuessed ?? quote.provider !== 'relay';
 }

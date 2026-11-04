@@ -1,6 +1,6 @@
 /**
- * Ledger price relay: a Cloudflare Worker that fetches latest prices from
- * Yahoo Finance for the Ledger app. Yahoo doesn't allow requests from web
+ * Virtual Stock Portfolio price relay: a Cloudflare Worker that fetches latest prices from
+ * Yahoo Finance for the Virtual Stock Portfolio app. Yahoo doesn't allow requests from web
  * pages, so the app asks this worker instead.
  *
  *   GET /?symbols=VOD.L,SAP.DE,AAPL

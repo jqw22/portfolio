@@ -18,7 +18,7 @@ interface AuthDialogProps {
 
 /**
  * Permissions asked of a remote signer during a nostrconnect handshake, so it
- * can approve them up front instead of prompting for every sync. Ledger signs
+ * can approve them up front instead of prompting for every sync. Virtual Stock Portfolio signs
  * its own kind 30078 events, encrypts them to the user's key with NIP-44, and
  * answers relay AUTH (kind 22242).
  */
@@ -49,7 +49,7 @@ function hasExtension(): boolean {
 }
 
 /**
- * Login dialog. Ledger never handles a secret key: the user logs in with a
+ * Login dialog. Virtual Stock Portfolio never handles a secret key: the user logs in with a
  * NIP-07 browser extension or a NIP-46 remote signer (bunker), and the signer
  * does all signing and NIP-44 encryption.
  */
@@ -124,7 +124,7 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
     const relayUrls = login.getRelayUrls();
     const params = generateNostrConnectParams(relayUrls);
     const baseUri = generateNostrConnectURI(params, {
-      name: 'Ledger',
+      name: 'Virtual Stock Portfolio',
       // Bring the user back to this app (respecting the GitHub Pages base
       // path) once the signer app has approved the connection.
       callback: isMobileDevice() ? `${window.location.origin}${import.meta.env.BASE_URL}` : undefined,
@@ -251,7 +251,7 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
             Log in
           </DialogTitle>
           <DialogDescription className="text-center">
-            Ledger never asks for your secret key. Your signer keeps it and encrypts your ledger for you.
+            Virtual Stock Portfolio never asks for your secret key. Your signer keeps it and encrypts your ledger for you.
           </DialogDescription>
         </DialogHeader>
 
@@ -299,7 +299,7 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
                 ) : extensionFound ? (
                   <p className="text-xs text-muted-foreground">
                     Uses the account that's active in your extension. To use another one, switch accounts in
-                    the extension and Ledger will follow.
+                    the extension and Virtual Stock Portfolio will follow.
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">
