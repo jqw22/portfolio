@@ -134,6 +134,8 @@ export default function Index() {
     addAccount,
     renameAccount,
     deleteAccount,
+    stockNotes,
+    setStockNote,
     refresh,
   } = useStockTransactions();
   const { toast } = useToast();
@@ -369,7 +371,7 @@ export default function Index() {
         canSync={canSync}
       >
         <DataMenu
-          ledger={{ transactions, cash, labels, accounts }}
+          ledger={{ transactions, cash, labels, accounts, stockNotes }}
           onRequestImport={() => fileInputRef.current?.click()}
           onLoadSample={handleLoadSample}
           onReset={() => {
@@ -482,6 +484,8 @@ export default function Index() {
                         showFooter
                         sort={holdingSort}
                         onSortChange={setHoldingSort}
+                        stockNotes={stockNotes}
+                        onNoteChange={setStockNote}
                       />
                     ))}
                     {accountPositions.length > 1 ? (
@@ -500,6 +504,8 @@ export default function Index() {
                       currency={currency}
                       title="Closed positions"
                       showFooter
+                      stockNotes={stockNotes}
+                      onNoteChange={setStockNote}
                     />
                   ) : null}
                 </TabsContent>

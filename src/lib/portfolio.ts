@@ -79,6 +79,8 @@ export interface Ledger {
   labels: string[];
   /** Accounts trades are made in, in the order they were created. */
   accounts: string[];
+  /** A free-text note per stock, keyed by upper-cased symbol and shared by every account. */
+  stockNotes: Record<string, string>;
 }
 
 /**
@@ -248,6 +250,37 @@ export function removeAccount(ledger: Ledger, account: string): Ledger {
   if (ledger.transactions.some((tx) => tx.account?.toLowerCase() === target)) return ledger;
   if (ledger.cash.some((entry) => entry.account?.toLowerCase() === target)) return ledger;
   return { ...ledger, accounts: ledger.accounts.filter((existing) => existing.toLowerCase() !== target) };
+}
+
+/** Longest stock note kept, in characters. */
+export const STOCK_NOTE_MAX_LENGTH = 2000;
+
+/** Trim a stock note and cap its length; blank notes become `undefined`. */
+export function normalizeStockNote(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const note = value.trim().slice(0, STOCK_NOTE_MAX_LENGTH).trim();
+  return note || undefined;
+}
+
+/** Coerce stored stock notes into `{ SYMBOL: note }`, dropping blanks and anything malformed. */
+export function parseStockNotes(value: unknown): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return result;
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    const symbol = key.trim().toUpperCase();
+    const note = normalizeStockNote(raw);
+    if (symbol && note) result[symbol] = note;
+  }
+  return result;
+}
+
+/** Set (or, with a blank note, delete) the note for a stock. */
+export function setStockNote(ledger: Ledger, symbol: string, note: string): Ledger {
+  const key = symbol.trim().toUpperCase();
+  if (!key) return ledger;
+  const { [key]: _previous, ...rest } = ledger.stockNotes;
+  const value = normalizeStockNote(note);
+  return { ...ledger, stockNotes: value ? { ...rest, [key]: value } : rest };
 }
 
 /** Identifies a position: the same symbol in two accounts is two positions. */
@@ -584,8 +617,8 @@ export function parseCashMovements(value: unknown): CashMovement[] {
 
 /**
  * Coerce a stored payload into a `Ledger`. Accepts the current
- * `{ transactions, cash, labels, accounts }` object (older ones lack `cash`,
- * `labels` or `accounts`) as well as the original bare transaction array.
+ * `{ transactions, cash, labels, accounts, stockNotes }` object (older ones lack
+ * `stockNotes`, `cash`, `labels` or `accounts`) as well as the original bare transaction array.
  * Labels and accounts used by entries but missing from their lists are added.
  */
 export function parseLedger(value: unknown): Ledger {
@@ -593,12 +626,14 @@ export function parseLedger(value: unknown): Ledger {
   let rawCash: unknown = [];
   let rawLabels: unknown = [];
   let rawAccounts: unknown = [];
+  let rawStockNotes: unknown = {};
   if (!Array.isArray(value) && typeof value === 'object' && value !== null) {
     const record = value as Record<string, unknown>;
     rawTransactions = record.transactions;
     rawCash = record.cash;
     rawLabels = record.labels;
     rawAccounts = record.accounts;
+    rawStockNotes = record.stockNotes;
   }
   const parsed = parseTransactions(rawTransactions);
   const parsedCash = parseCashMovements(rawCash);
@@ -621,5 +656,5 @@ export function parseLedger(value: unknown): Ledger {
   const cash = parsedCash.map((entry) =>
     entry.account ? { ...entry, account: findLabel(accounts, entry.account) } : entry,
   );
-  return { transactions, cash, labels, accounts };
+  return { transactions, cash, labels, accounts, stockNotes: parseStockNotes(rawStockNotes) };
 }
