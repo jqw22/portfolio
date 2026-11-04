@@ -56,6 +56,22 @@ describe('symbols and currencies', () => {
     expect(quoteSymbolFor('BP.LON')).toBe('BP.LON');
   });
 
+  it('reads exchange-prefixed tickers', () => {
+    expect(quoteSymbolFor('BMEX:GRF')).toBe('GRF.MC');
+    expect(quoteSymbolFor('bme:grf')).toBe('GRF.MC');
+    expect(yahooSymbolFor(quoteSymbolFor('BMEX:GRF'))).toBe('GRF.MC');
+    expect(quoteCurrencyFor(quoteSymbolFor('BMEX:GRF'))).toBe('EUR');
+    expect(quoteSymbolFor('LON:VOD')).toBe('VOD.LON');
+    expect(quoteSymbolFor('XETR:SAP')).toBe('SAP.DEX');
+    expect(quoteSymbolFor('NASDAQ:AAPL')).toBe('AAPL');
+    expect(quoteSymbolFor('FOO:BAR')).toBe('FOO:BAR');
+  });
+
+  it('uses a symbol override from Prices, including prefixed ones', () => {
+    const settings = settingsWith({ relayUrl: 'https://relay.example', symbols: { GRF: { quoteSymbol: 'BMEX:GRF' } } });
+    expect(planQuotes('GRF', settings)[0]).toMatchObject({ provider: 'relay', quoteSymbol: 'GRF.MC', currency: 'EUR' });
+  });
+
   it('infers the quote currency from the exchange', () => {
     expect(quoteCurrencyFor('AAPL')).toBe('USD');
     expect(quoteCurrencyFor('VOD.LON')).toBe('GBX');

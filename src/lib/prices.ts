@@ -185,9 +185,66 @@ function splitSuffix(symbol: string): [string, string | undefined] {
 /** US share classes written with a dot, e.g. `BRK.B`; the sources spell them with a dash. */
 const SHARE_CLASSES = new Set(['A', 'B']);
 
-/** The symbol to ask the price source for, e.g. `VOD.L` → `VOD.LON`, `BRK.B` → `BRK-B`. */
+/**
+ * Exchange prefixes as written by TradingView, Google Finance and brokers (`BMEX:GRF`),
+ * and the Yahoo suffix for that exchange. US exchanges map to no suffix.
+ */
+const EXCHANGE_PREFIX_TO_SUFFIX: Record<string, string> = {
+  LON: 'L',
+  LSE: 'L',
+  BME: 'MC',
+  BMEX: 'MC',
+  MCE: 'MC',
+  MAD: 'MC',
+  XETR: 'DE',
+  XETRA: 'DE',
+  ETR: 'DE',
+  FRA: 'F',
+  FWB: 'F',
+  EPA: 'PA',
+  EURONEXT: 'PA',
+  AMS: 'AS',
+  EBR: 'BR',
+  BIT: 'MI',
+  MIL: 'MI',
+  ELI: 'LS',
+  HEL: 'HE',
+  VIE: 'VI',
+  ISE: 'IR',
+  SIX: 'SW',
+  SWX: 'SW',
+  STO: 'ST',
+  CPH: 'CO',
+  OSL: 'OL',
+  TSX: 'TO',
+  TSE: 'TO',
+  NASDAQ: '',
+  NYSE: '',
+  NYSEARCA: '',
+  AMEX: '',
+  BATS: '',
+};
+
+/**
+ * Turn an exchange-prefixed ticker into the dotted form, e.g. `BMEX:GRF` → `GRF.MC`,
+ * `NASDAQ:AAPL` → `AAPL`. Other symbols are returned as they are.
+ */
+function fromExchangePrefix(symbol: string): string {
+  const value = symbol.trim().toUpperCase();
+  const colon = value.indexOf(':');
+  if (colon <= 0 || colon === value.length - 1) return value;
+  const suffix = EXCHANGE_PREFIX_TO_SUFFIX[value.slice(0, colon)];
+  if (suffix === undefined) return value;
+  const base = value.slice(colon + 1);
+  return suffix ? `${base}.${suffix}` : base;
+}
+
+/**
+ * The symbol to ask the price source for, e.g. `VOD.L` → `VOD.LON`, `BRK.B` → `BRK-B`,
+ * `BMEX:GRF` → `GRF.MC`.
+ */
 export function quoteSymbolFor(symbol: string): string {
-  const [base, suffix] = splitSuffix(symbol);
+  const [base, suffix] = splitSuffix(fromExchangePrefix(symbol));
   if (!suffix) return base;
   if (SHARE_CLASSES.has(suffix)) return `${base}-${suffix}`;
   return `${base}.${SUFFIX_TO_ALPHA_VANTAGE[suffix] ?? suffix}`;
@@ -242,7 +299,7 @@ export interface QuotePlan {
  */
 export function planQuotes(symbol: string, settings: PriceSettings): QuotePlan[] {
   const own = settings.symbols[symbol] ?? {};
-  const quoteSymbol = own.quoteSymbol?.trim().toUpperCase() || quoteSymbolFor(symbol);
+  const quoteSymbol = quoteSymbolFor(own.quoteSymbol?.trim() || symbol);
   const currency = own.quoteCurrency || quoteCurrencyFor(quoteSymbol);
   // Only marked when set, so plans for symbols without settings stay as they were.
   const set = own.quoteCurrency ? { currencySet: true } : {};
