@@ -13,6 +13,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { LabelBadge } from '@/components/ledger/LabelBadge';
+import { YahooLinkButton } from '@/components/ledger/YahooLinkButton';
 import { StockNoteButton } from '@/components/ledger/StockNoteButton';
 import { cn } from '@/lib/utils';
 import type { CashBalance } from '@/lib/cash';
@@ -60,6 +61,8 @@ interface HoldingsTableProps {
   /** Notes by upper-cased symbol. With `onNoteChange`, each stock gets a note icon. */
   stockNotes?: Record<string, string>;
   onNoteChange?: (symbol: string, note: string) => void;
+  /** The Yahoo Finance page for a symbol. When given, each stock gets a link icon. */
+  quoteUrlFor?: (symbol: string) => string;
 }
 
 interface SortableHeadProps {
@@ -200,6 +203,7 @@ export function HoldingsTable({
   sort,
   onSortChange,
   stockNotes,
+  quoteUrlFor,
   onNoteChange,
 }: HoldingsTableProps) {
   const rows = sort ? sortHoldings(holdings, sort) : holdings;
@@ -272,6 +276,9 @@ export function HoldingsTable({
                       <span className="truncate font-semibold" title={holdingDisplayName(holding)}>
                         {holdingDisplayName(holding)}
                       </span>
+                      {quoteUrlFor ? (
+                        <YahooLinkButton stockName={holdingDisplayName(holding)} href={quoteUrlFor(holding.symbol)} />
+                      ) : null}
                       {onNoteChange ? (
                         <StockNoteButton
                           stockName={holdingDisplayName(holding)}

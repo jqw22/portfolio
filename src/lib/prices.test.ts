@@ -22,6 +22,7 @@ import {
   totalUnrealised,
   unrealisedGain,
   yahooSymbolFor,
+  yahooQuoteUrl,
   type FxRates,
   type PriceSettings,
   type Quote,
@@ -373,5 +374,19 @@ describe('reported currencies', () => {
     const settings = settingsWith({ symbols: { 'VUSA.L': { quoteCurrency: 'GBX' } } });
     const quotes = { 'VUSA.L': { ...quote(90, 'GBP'), provider: 'relay' as const } };
     expect(resolvePrice('VUSA.L', settings, quotes, fx, 'GBP')?.price).toBe(90);
+  });
+});
+
+describe('yahooQuoteUrl', () => {
+  const none = { symbols: {} };
+  it('links to the symbol Yahoo uses', () => {
+    expect(yahooQuoteUrl('AAPL', none)).toBe('https://finance.yahoo.com/quote/AAPL/');
+    expect(yahooQuoteUrl('VOD.L', none)).toBe('https://finance.yahoo.com/quote/VOD.L/');
+    expect(yahooQuoteUrl('VOD.LON', none)).toBe('https://finance.yahoo.com/quote/VOD.L/');
+    expect(yahooQuoteUrl('BMEX:GRF', none)).toBe('https://finance.yahoo.com/quote/GRF.MC/');
+    expect(yahooQuoteUrl('BRK.B', none)).toBe('https://finance.yahoo.com/quote/BRK-B/');
+  });
+  it('uses the quote symbol set in Prices', () => {
+    expect(yahooQuoteUrl('GRF', { symbols: { GRF: { quoteSymbol: 'GRF.MC' } } })).toBe('https://finance.yahoo.com/quote/GRF.MC/');
   });
 });
