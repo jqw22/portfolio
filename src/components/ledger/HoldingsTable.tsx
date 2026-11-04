@@ -13,6 +13,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { LabelBadge } from '@/components/ledger/LabelBadge';
+import { StockNoteButton } from '@/components/ledger/StockNoteButton';
 import { cn } from '@/lib/utils';
 import type { CashBalance } from '@/lib/cash';
 import {
@@ -56,6 +57,9 @@ interface HoldingsTableProps {
   /** Row order. When given with `onSortChange`, the Stock and Label headings sort the table. */
   sort?: HoldingSort;
   onSortChange?: (sort: HoldingSort) => void;
+  /** Notes by upper-cased symbol. With `onNoteChange`, each stock gets a note icon. */
+  stockNotes?: Record<string, string>;
+  onNoteChange?: (symbol: string, note: string) => void;
 }
 
 interface SortableHeadProps {
@@ -194,6 +198,8 @@ export function HoldingsTable({
   actions,
   sort,
   onSortChange,
+  stockNotes,
+  onNoteChange,
 }: HoldingsTableProps) {
   const rows = sort ? sortHoldings(holdings, sort) : holdings;
   const showMarket = prices !== undefined;
@@ -250,7 +256,7 @@ export function HoldingsTable({
               const price = prices?.[holding.symbol];
               const unrealised = isOpen ? unrealisedGain(holding, price?.price) : null;
               return (
-                <TableRow key={holding.key}>
+                <TableRow key={holding.key} className="group/row">
                   {showAccount ? (
                     <TableCell className="pl-6">
                       {holding.account ? (
@@ -261,10 +267,17 @@ export function HoldingsTable({
                     </TableCell>
                   ) : null}
                   <TableCell className={cn(!showAccount && 'pl-6')}>
-                    <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-1.5">
                       <span className="truncate font-semibold" title={holdingDisplayName(holding)}>
                         {holdingDisplayName(holding)}
                       </span>
+                      {onNoteChange ? (
+                        <StockNoteButton
+                          stockName={holdingDisplayName(holding)}
+                          note={stockNotes?.[holding.symbol]}
+                          onSave={(note) => onNoteChange(holding.symbol, note)}
+                        />
+                      ) : null}
                       {!isOpen ? (
                         <Badge variant="outline" className="shrink-0 text-[0.65rem]">
                           Closed

@@ -45,7 +45,7 @@ const plaintext = await user.signer.nip44.decrypt(user.pubkey, event.content);
 ### Write / update
 
 ```ts
-const payload = { version: 4, transactions, cash, labels, accounts };
+const payload = { version: 5, transactions, cash, labels, accounts, stockNotes };
 const ciphertext = await user.signer.nip44.encrypt(user.pubkey, JSON.stringify(payload));
 await createEvent({
   kind: 30078,
@@ -60,14 +60,17 @@ revisions never tie.
 
 ## Decrypted payload schema
 
-`content` decrypts to a JSON object holding the trades, the cash movements and
-the user's lists of labels and accounts:
+`content` decrypts to a JSON object holding the trades, the cash movements, the
+user's lists of labels and accounts, and their notes on individual stocks:
 
 ```jsonc
 {
-  "version": 4,
+  "version": 5,
   "labels": ["Long term", "Dividend"], // user-defined labels, in creation order
   "accounts": ["ISA", "General"],      // accounts trades are made in, in creation order
+  "stockNotes": {                      // one free-text note per stock, shared by every account
+    "AAPL": "Long-term hold. Review after results."
+  },
   "transactions": [
     {
       "id": "0f1e2d3c-…",   // opaque client-generated identifier
@@ -115,9 +118,14 @@ from `accounts` is added on read.
 Positions are computed per account: the same symbol held in two accounts is two
 separate holdings, each with its own cost basis and realized P&L.
 
+Stock notes are keyed by the upper-cased symbol, as used on transactions. A note
+is trimmed and at most 2000 characters; blank notes are not stored. Notes are
+kept when a stock is sold out of, and resetting the ledger deletes them.
+
 ### Older versions
 
-Version 3 is the same object without `cash`; readers treat a missing `cash` as
+Version 4 is the same object without `stockNotes`; readers treat a missing
+`stockNotes` as `{}`. Version 3 is the same object without `cash`; readers treat a missing `cash` as
 `[]`. Version 2 also lacks `accounts`, read as `[]`.
 
 Version 1 (legacy)
@@ -127,7 +135,7 @@ transaction objects (the `transactions` array above, without `label` or
 `account`). Readers must still accept this form and treat it as
 `{ "labels": [], "accounts": [], "cash": [], "transactions": <array> }`.
 
-The next write upgrades any older revision to version 4.
+The next write upgrades any older revision to version 5.
 
 ## Derived values (not stored)
 

@@ -31,6 +31,7 @@ import {
   removeAccount,
   removeLabel,
   renameAccount as renameLedgerAccount,
+  setStockNote as setLedgerStockNote,
   type CashMovement,
   type CashMovementInput,
   type Ledger,
@@ -46,14 +47,14 @@ export const LEDGER_D_TAG = 'stock-ledger';
 const CACHE_PREFIX = 'stock-ledger:cache:';
 /**
  * Version 1 caches held transactions only; version 2 adds labels and accounts
- * (a missing `accounts` reads as empty); version 3 adds cash movements. All
- * are readable.
+ * (a missing `accounts` reads as empty); version 3 adds cash movements;
+ * version 4 adds stock notes. All are readable.
  */
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 /** Version of the decrypted relay payload (see NIP.md). */
-const PAYLOAD_VERSION = 4;
+const PAYLOAD_VERSION = 5;
 
-const EMPTY_LEDGER: Ledger = { transactions: [], cash: [], labels: [], accounts: [] };
+const EMPTY_LEDGER: Ledger = { transactions: [], cash: [], labels: [], accounts: [], stockNotes: {} };
 
 interface LedgerCache {
   version: number;
@@ -73,7 +74,7 @@ function readCache(pubkey?: string): LedgerCache | null {
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return null;
     const record = parsed as Record<string, unknown>;
-    if (record.version !== 1 && record.version !== 2 && record.version !== CACHE_VERSION) return null;
+    if (![1, 2, 3, CACHE_VERSION].includes(record.version as number)) return null;
     const updatedAt = typeof record.updatedAt === 'number' ? record.updatedAt : 0;
     return { version: CACHE_VERSION, updatedAt, ledger: parseLedger(record) };
   } catch (error) {
@@ -99,6 +100,8 @@ export interface StockTransactions {
   labels: string[];
   /** The user's accounts, in creation order. */
   accounts: string[];
+  /** A note per stock, keyed by upper-cased symbol. */
+  stockNotes: Record<string, string>;
   isLoading: boolean;
   isSyncing: boolean;
   isLoggedIn: boolean;
@@ -116,7 +119,7 @@ export interface StockTransactions {
   appendEntries: (transactions: Transaction[], cash: CashMovement[]) => void;
   /** Replace the whole ledger, e.g. with sample data. */
   replaceLedger: (ledger: Ledger) => void;
-  /** Delete every transaction, cash movement, label and account. */
+  /** Delete every transaction, cash movement, label, account and stock note. */
   resetLedger: () => void;
   /** Add a label (no-op if it already exists) and return its stored spelling. */
   addLabel: (label: string) => string | undefined;
@@ -128,6 +131,8 @@ export interface StockTransactions {
   renameAccount: (from: string, to: string) => boolean;
   /** Delete an account; does nothing while any transaction uses it. */
   deleteAccount: (account: string) => void;
+  /** Set a stock's note; a blank note deletes it. */
+  setStockNote: (symbol: string, note: string) => void;
   /** The raw query, exposed for advanced callers. */
   query: UseQueryResult<Ledger, Error>;
 }
@@ -163,6 +168,7 @@ export function useStockTransactions(): StockTransactions {
         cash: ledger.cash,
         labels: ledger.labels,
         accounts: ledger.accounts,
+        stockNotes: ledger.stockNotes,
       };
       const ciphertext = await nip44.encrypt(user.pubkey, JSON.stringify(payload));
       const now = Math.floor(Date.now() / 1000);
@@ -255,7 +261,8 @@ export function useStockTransactions(): StockTransactions {
           (local.ledger.transactions.length > 0 ||
             local.ledger.cash.length > 0 ||
             local.ledger.labels.length > 0 ||
-            local.ledger.accounts.length > 0)
+            local.ledger.accounts.length > 0 ||
+            Object.keys(local.ledger.stockNotes).length > 0)
         ) {
           enqueuePublish(local.ledger);
         }
@@ -407,6 +414,13 @@ export function useStockTransactions(): StockTransactions {
     [commitLedger],
   );
 
+  const setStockNote = useCallback(
+    (symbol: string, note: string) => {
+      commitLedger((previous) => setLedgerStockNote(previous, symbol, note));
+    },
+    [commitLedger],
+  );
+
   const refresh = useCallback(() => {
     void query.refetch();
   }, [query]);
@@ -416,6 +430,7 @@ export function useStockTransactions(): StockTransactions {
     cash: query.data?.cash ?? EMPTY_LEDGER.cash,
     labels: query.data?.labels ?? EMPTY_LEDGER.labels,
     accounts: query.data?.accounts ?? EMPTY_LEDGER.accounts,
+    stockNotes: query.data?.stockNotes ?? EMPTY_LEDGER.stockNotes,
     isLoading: query.isLoading,
     isSyncing,
     isLoggedIn: Boolean(user),
@@ -435,6 +450,7 @@ export function useStockTransactions(): StockTransactions {
     addAccount,
     renameAccount,
     deleteAccount,
+    setStockNote,
     query,
   };
 }

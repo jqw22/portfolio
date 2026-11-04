@@ -24,5 +24,6 @@ export function sampleLedger(): Ledger {
     ],
     labels: [],
     accounts: [SAMPLE_ACCOUNT],
+    stockNotes: {},
   };
 }
