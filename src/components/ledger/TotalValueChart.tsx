@@ -169,7 +169,7 @@ export function TotalValueChart({
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
           <CardDescription>
             All accounts together, positions at latest prices plus cash, saved
-            once a day when Ledger is open (the last save of the day counts).
+            once a day when Virtual Stock Portfolio is open (the last save of the day counts).
             Last 3 months.
           </CardDescription>
           {onRestart && rows.length > 0 ? (
@@ -189,7 +189,7 @@ export function TotalValueChart({
           <div className="rounded-lg border border-dashed px-6 py-10 text-center text-sm text-muted-foreground">
             The first snapshot is saved once your accounts have holdings or
             cash. The chart fills in from there, one point for each day you open
-            Ledger.
+            Virtual Stock Portfolio.
           </div>
         ) : (
           <ChartContainer

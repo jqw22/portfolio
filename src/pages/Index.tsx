@@ -109,7 +109,7 @@ function LedgerSkeleton() {
 
 export default function Index() {
   useSeoMeta({
-    title: 'Ledger — Private stock transaction tracker',
+    title: 'Virtual Stock Portfolio — Private stock transaction tracker',
     description:
       'Record stock buys and sells with dates, quantities, prices and fees. Track cost basis and realised P&L — encrypted and synced to your own Nostr relays.',
   });
@@ -402,8 +402,8 @@ export default function Index() {
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Portfolio</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {isLoggedIn
-                ? 'Your ledger is encrypted to your Nostr key and synced to your relays.'
-                : 'Your ledger is stored in this browser. Sign in to encrypt and sync it.'}
+                ? 'Your data is encrypted to your Nostr key and synced to your relays.'
+                : 'Sign in to encrypt and sync your data over Nostr.'}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">

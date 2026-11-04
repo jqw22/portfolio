@@ -1,6 +1,6 @@
-# NIP.md — Ledger
+# NIP.md — Virtual Stock Portfolio
 
-Ledger stores a user's stock transactions on Nostr so the data is portable across
+Virtual Stock Portfolio stores a user's stock transactions on Nostr so the data is portable across
 devices and clients. It does **not** define any new event kinds. Instead it reuses
 the existing **NIP-78** "Application-specific data" kind and layers a documented
 schema on top of it.
@@ -153,7 +153,7 @@ cash = deposits − withdrawals − Σ buys (quantity × price + fees) + Σ sell
 ```
 
 Balances are evaluated at the end of each day, so the order of same-day entries
-does not matter. Ledger refuses a new or edited buy or withdrawal (and the
+does not matter. Virtual Stock Portfolio refuses a new or edited buy or withdrawal (and the
 deletion of a deposit or sell) that would take any account's end-of-day balance
 below zero on any date, unless that account was already lower than that before
 the change. Every trade and cash movement entered in the app belongs to an
@@ -161,7 +161,7 @@ account.
 
 ## Account value snapshots
 
-Ledger also keeps a daily history of each account's value for the chart on the
+Virtual Stock Portfolio also keeps a daily history of each account's value for the chart on the
 Analysis tab. Prices are not part of the ledger, so the history can't be rebuilt
 from trades; it is recorded forward instead, once a day while the app is open.
 

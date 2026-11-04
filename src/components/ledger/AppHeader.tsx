@@ -74,7 +74,7 @@ export function AppHeader({
             </svg>
           </div>
           <div className="min-w-0 leading-tight">
-            <p className="truncate text-base font-semibold tracking-tight">Ledger</p>
+            <p className="truncate text-base font-semibold tracking-tight">Virtual Stock Portfolio</p>
             <p className="hidden truncate text-xs text-muted-foreground sm:block">
               Private stock transaction log
             </p>

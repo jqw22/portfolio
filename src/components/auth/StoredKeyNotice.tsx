@@ -18,7 +18,7 @@ import { useToast } from '@/hooks/useToast';
 
 /**
  * Shown to anyone still logged in with a secret key saved in this browser
- * from before Ledger dropped nsec logins. The key is not removed
+ * from before Virtual Stock Portfolio dropped nsec logins. The key is not removed
  * automatically, because it may be the only copy and losing it would lock the
  * user out of their encrypted ledger. Instead they are asked to move it into
  * an extension or signer and then remove it here.
@@ -47,7 +47,7 @@ export function StoredKeyNotice() {
         <AlertTitle>Your secret key is saved in this browser</AlertTitle>
         <AlertDescription className="text-amber-900 dark:text-amber-200">
           <p>
-            Ledger now only logs in with a browser extension or a remote signer. Add this key to one of
+            Virtual Stock Portfolio now only logs in with a browser extension or a remote signer. Add this key to one of
             those, then remove it from this browser and log back in with it.
           </p>
           <div className="mt-2 flex flex-wrap gap-2">

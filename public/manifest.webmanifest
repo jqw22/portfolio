@@ -1,6 +1,6 @@
 {
-  "name": "Ledger — Stock Transaction Tracker",
-  "short_name": "Ledger",
+  "name": "Virtual Stock Portfolio — Stock Transaction Tracker",
+  "short_name": "Stock Portfolio",
   "description": "Record stock buys and sells and track cost basis and realised P&L, encrypted to your own Nostr key.",
   "start_url": "./",
   "scope": "./",
