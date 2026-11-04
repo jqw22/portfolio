@@ -189,6 +189,7 @@ export default function Index() {
     record: recordSnapshot,
     renameAccount: renameSnapshotAccount,
     clear: clearSnapshots,
+    restartFromToday: restartSnapshots,
   } = useAccountSnapshots();
   // Save today's value of each account whenever it changes (e.g. after prices refresh).
   useEffect(() => {
@@ -529,7 +530,12 @@ export default function Index() {
                 </TabsContent>
 
                 <TabsContent value="analysis" className="mt-4 space-y-6">
-                  <TotalValueChart snapshots={snapshots} accounts={accounts} currency={currency} />
+                  <TotalValueChart
+                    snapshots={snapshots}
+                    accounts={accounts}
+                    currency={currency}
+                    onRestart={restartSnapshots}
+                  />
                   <AccountValueChart snapshots={snapshots} accounts={accounts} currency={currency} />
                   <AnalysisTable
                     title="By account"

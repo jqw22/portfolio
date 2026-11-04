@@ -3,9 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   addMonths,
   chartData,
+  dropBefore,
+  laterSince,
   localDate,
   mergeSnapshots,
   NO_ACCOUNT,
+  parseSince,
   parseSnapshots,
   renameSnapshotAccount,
   upsertSnapshot,
@@ -106,5 +109,17 @@ describe('chartData', () => {
       { date: '2026-08-10', values: [null, 100, null, 5], total: 105 },
       { date: '2026-10-19', values: [50, 120, 7, null], total: 177 },
     ]);
+  });
+});
+
+describe('restarting the chart', () => {
+  it('drops days before the start date and keeps the later start date', () => {
+    const list = [snap('2026-11-02', { ISA: 1 }), snap('2026-11-04', { ISA: 2 })];
+    expect(dropBefore(list, '2026-11-04').map((entry) => entry.date)).toEqual(['2026-11-04']);
+    expect(dropBefore(list, undefined)).toBe(list);
+    expect(laterSince('2026-11-01', '2026-11-04')).toBe('2026-11-04');
+    expect(laterSince(undefined, '2026-11-04')).toBe('2026-11-04');
+    expect(parseSince({ since: '2026-11-04', snapshots: [] })).toBe('2026-11-04');
+    expect(parseSince([])).toBeUndefined();
   });
 });

@@ -8,6 +8,8 @@
  *
  * Snapshots only ever grow, so the relay copy and the local copy are merged
  * (the later snapshot wins for each day) rather than one replacing the other.
+ * Restarting the chart stores a `since` date with them instead of only deleting,
+ * so another device's older copy can't bring the dropped days back.
  */
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
@@ -18,8 +20,11 @@ import { useCurrentUser } from './useCurrentUser';
 import { useNostrPublish } from './useNostrPublish';
 import { LEDGER_KIND } from './useStockTransactions';
 import {
+  dropBefore,
+  laterSince,
   localDate,
   mergeSnapshots,
+  parseSince,
   parseSnapshots,
   renameSnapshotAccount,
   sameSnapshots,
@@ -42,19 +47,28 @@ function cacheKey(pubkey?: string): string {
   return `${CACHE_PREFIX}${pubkey ?? 'anon'}`;
 }
 
-function readCache(pubkey?: string): Snapshot[] {
+interface Stored {
+  snapshots: Snapshot[];
+  /** Days before this were dropped when the chart was restarted. */
+  since?: string;
+}
+
+function readCache(pubkey?: string): Stored {
   try {
     const raw = localStorage.getItem(cacheKey(pubkey));
-    return raw ? parseSnapshots(JSON.parse(raw)) : EMPTY;
+    if (!raw) return { snapshots: EMPTY };
+    const json: unknown = JSON.parse(raw);
+    const since = parseSince(json);
+    return { snapshots: dropBefore(parseSnapshots(json), since), since };
   } catch (error) {
     console.warn('Failed to read cached snapshots:', error);
-    return EMPTY;
+    return { snapshots: EMPTY };
   }
 }
 
-function writeCache(pubkey: string | undefined, snapshots: Snapshot[]): void {
+function writeCache(pubkey: string | undefined, stored: Stored): void {
   try {
-    localStorage.setItem(cacheKey(pubkey), JSON.stringify({ version: PAYLOAD_VERSION, snapshots }));
+    localStorage.setItem(cacheKey(pubkey), JSON.stringify({ version: PAYLOAD_VERSION, ...stored }));
   } catch (error) {
     console.warn('Failed to cache snapshots:', error);
   }
@@ -72,6 +86,8 @@ export function useAccountSnapshots() {
   const lastCreatedAtRef = useRef(0);
   const chainRef = useRef<Promise<void>>(Promise.resolve());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** The chart's restart date, saved and published with the snapshots. */
+  const sinceRef = useRef<string | undefined>(undefined);
 
   const publishSnapshots = useCallback(
     async (snapshots: Snapshot[]) => {
@@ -79,7 +95,7 @@ export function useAccountSnapshots() {
       if (!user || !nip44) return;
       const ciphertext = await nip44.encrypt(
         user.pubkey,
-        JSON.stringify({ version: PAYLOAD_VERSION, snapshots }),
+        JSON.stringify({ version: PAYLOAD_VERSION, snapshots, since: sinceRef.current }),
       );
       const createdAt = Math.max(Math.floor(Date.now() / 1000), lastCreatedAtRef.current + 1);
       const event = await publish({
@@ -122,35 +138,41 @@ export function useAccountSnapshots() {
     queryKey,
     queryFn: async (context) => {
       const local = readCache(pubkey);
+      sinceRef.current = local.since;
       const nip44 = user?.signer.nip44;
-      if (!user || !nip44) return local;
+      if (!user || !nip44) return local.snapshots;
       try {
         const events = await nostr.query(
           [{ kinds: [LEDGER_KIND], authors: [user.pubkey], '#d': [SNAPSHOTS_D_TAG], limit: 1 }],
           { signal: context.signal },
         );
         const event = events[0];
-        const remote = event ? parseSnapshots(JSON.parse(await nip44.decrypt(user.pubkey, event.content))) : EMPTY;
+        const json: unknown = event ? JSON.parse(await nip44.decrypt(user.pubkey, event.content)) : null;
+        const remote = json ? parseSnapshots(json) : EMPTY;
+        const remoteSince = parseSince(json);
         if (event) lastCreatedAtRef.current = Math.max(lastCreatedAtRef.current, event.created_at);
         // Snapshots recorded while this was loading are in the cache by now.
-        const merged = mergeSnapshots(readCache(pubkey), remote);
-        writeCache(pubkey, merged);
-        if (!sameSnapshots(merged, remote)) schedulePublish();
+        const cached = readCache(pubkey);
+        const since = laterSince(cached.since, remoteSince);
+        sinceRef.current = since;
+        const merged = dropBefore(mergeSnapshots(cached.snapshots, remote), since);
+        writeCache(pubkey, { snapshots: merged, since });
+        if (!sameSnapshots(merged, remote) || since !== remoteSince) schedulePublish();
         return merged;
       } catch (error) {
         console.warn('Failed to load snapshots from relays, using local copy:', error);
-        return readCache(pubkey);
+        return readCache(pubkey).snapshots;
       }
     },
   });
 
   const commit = useCallback(
     (updater: (previous: Snapshot[]) => Snapshot[], delay?: number) => {
-      const previous = queryClient.getQueryData<Snapshot[]>(queryKey) ?? readCache(pubkey);
+      const previous = queryClient.getQueryData<Snapshot[]>(queryKey) ?? readCache(pubkey).snapshots;
       const next = updater(previous);
       if (next === previous) return;
       queryClient.setQueryData<Snapshot[]>(queryKey, next);
-      writeCache(pubkey, next);
+      writeCache(pubkey, { snapshots: next, since: sinceRef.current });
       schedulePublish(delay);
     },
     [pubkey, queryClient, queryKey, schedulePublish],
@@ -172,11 +194,22 @@ export function useAccountSnapshots() {
   /** Delete every snapshot, e.g. when the ledger is reset. */
   const clear = useCallback(() => commit((previous) => (previous.length === 0 ? previous : EMPTY), 0), [commit]);
 
+  /**
+   * Restart the history from today: earlier days are dropped (here and on other
+   * devices) and today's value becomes the starting point the change is measured from.
+   */
+  const restartFromToday = useCallback(() => {
+    sinceRef.current = laterSince(sinceRef.current, localDate());
+    // A new array even when nothing is dropped, so the new start date is saved and published.
+    commit((previous) => [...dropBefore(previous, sinceRef.current)], 0);
+  }, [commit]);
+
   return {
     snapshots: query.data ?? EMPTY,
     isLoading: query.isLoading,
     record,
     renameAccount,
     clear,
+    restartFromToday,
   };
 }
