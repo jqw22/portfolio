@@ -186,7 +186,8 @@ Read it with `authors: [user.pubkey]` and `'#d': ['stock-ledger-snapshots']`.
       "values": { "ISA": 13950, "GIA": 5450 }, // account → open positions at latest prices plus cash, whole units
       "takenAt": 1792426403386       // ms since epoch when recorded
     }
-  ]
+  ],
+  "since": "2026-11-04"              // optional: the chart was restarted; days before this are dropped
 }
 ```
 
@@ -197,6 +198,10 @@ the later `takenAt` winning for a day both copies hold. Renaming an account
 renames it in every snapshot; resetting the ledger deletes them all. Values are
 derived, not authoritative: unpriced holdings count at cost, as on the Analysis
 tab.
+
+Restarting the chart sets `since` to that day. When copies merge, the later
+`since` wins and days before it are dropped, so an older copy on another device
+can't bring them back.
 
 Signed out, snapshots are cached in `localStorage` under
 `stock-ledger:snapshots:<pubkey|anon>`.

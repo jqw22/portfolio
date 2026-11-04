@@ -75,6 +75,25 @@ export function mergeSnapshots(a: Snapshot[], b: Snapshot[]): Snapshot[] {
   return sortByDate([...byDate.values()]);
 }
 
+/** Drop snapshots from before `since` (`YYYY-MM-DD`), e.g. after the chart is restarted. */
+export function dropBefore(snapshots: Snapshot[], since: string | undefined): Snapshot[] {
+  if (!since || !snapshots.some((snapshot) => snapshot.date < since)) return snapshots;
+  return snapshots.filter((snapshot) => snapshot.date >= since);
+}
+
+/** The `since` date stored next to the snapshots, if any. */
+export function parseSince(json: unknown): string | undefined {
+  const since = typeof json === 'object' && json !== null ? (json as { since?: unknown }).since : undefined;
+  return typeof since === 'string' && DATE_PATTERN.test(since) ? since : undefined;
+}
+
+/** The later of two `since` dates, so a restart on one device holds on the others. */
+export function laterSince(a: string | undefined, b: string | undefined): string | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  return a > b ? a : b;
+}
+
 /** Whether two snapshot lists hold the same data. */
 export function sameSnapshots(a: Snapshot[], b: Snapshot[]): boolean {
   return (

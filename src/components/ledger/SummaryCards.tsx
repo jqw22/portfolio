@@ -52,7 +52,7 @@ export function SummaryCards({ portfolio, cashTotal, cashAccounts, currency, pri
         : 'No open positions'
       : current.missing > 0
         ? `${pluralize(current.missing, 'position')} without a price, at cost`
-        : 'At latest prices';
+        : `${pluralize(portfolio.openHoldings.length, 'position')} at latest prices`;
   const unrealisedPositive = current.gain >= 0;
   const UnrealisedIcon = unrealisedPositive ? TrendingUp : TrendingDown;
   const gainPercent = current.costBasis > 0 ? (current.gain / current.costBasis) * 100 : 0;
@@ -69,21 +69,29 @@ export function SummaryCards({ portfolio, cashTotal, cashAccounts, currency, pri
 
   const items: SummaryItem[] = [
     {
-      label: 'Cost basis',
-      value: formatWhole(portfolio.totalCostBasis, currency),
-      hint: `${pluralize(portfolio.openHoldings.length, 'open position')} held`,
+      label: 'Total value',
+      value: formatWhole(current.value + cashTotal, currency),
+      hint: 'Stocks plus cash',
       icon: Wallet,
       iconClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
     },
     {
-      label: 'Current value',
+      label: 'Stocks value',
       value: formatWhole(current.value, currency),
       hint: currentHint,
       icon: ChartLine,
       iconClass: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
     },
     {
-      label: 'Unrealised gain',
+      label: 'Cash value',
+      value: formatWhole(cashTotal, currency),
+      hint: `Across ${pluralize(cashAccounts, 'account')}`,
+      icon: Banknote,
+      iconClass: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
+      valueClass: cashTotal < 0 ? 'text-rose-600 dark:text-rose-400' : undefined,
+    },
+    {
+      label: 'Unrealised',
       value: `${gainSign}${formatWhole(current.gain, currency)}`,
       hint: unrealisedHint,
       icon: UnrealisedIcon,
@@ -101,7 +109,7 @@ export function SummaryCards({ portfolio, cashTotal, cashAccounts, currency, pri
             : 'text-rose-600 dark:text-rose-400',
     },
     {
-      label: 'Realised P&L',
+      label: 'Realised',
       value: formatWhole(portfolio.totalRealizedPnl, currency),
       hint: `${formatWhole(portfolio.totalProceeds, currency)} in proceeds`,
       icon: RealizedIcon,
@@ -111,14 +119,6 @@ export function SummaryCards({ portfolio, cashTotal, cashAccounts, currency, pri
       valueClass: realizedPositive
         ? 'text-emerald-600 dark:text-emerald-400'
         : 'text-rose-600 dark:text-rose-400',
-    },
-    {
-      label: 'Cash',
-      value: formatWhole(cashTotal, currency),
-      hint: `Across ${pluralize(cashAccounts, 'account')}`,
-      icon: Banknote,
-      iconClass: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
-      valueClass: cashTotal < 0 ? 'text-rose-600 dark:text-rose-400' : undefined,
     },
   ];
 
