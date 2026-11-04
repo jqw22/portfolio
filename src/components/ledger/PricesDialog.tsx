@@ -273,7 +273,8 @@ function PricesForm({
         <div>
           <h3 className="text-sm font-medium">Symbols</h3>
           <p className="text-xs text-muted-foreground">
-            London tickers end in .LON (or .L), Xetra .DEX, Paris .PAR, Amsterdam .AMS. A manual price always wins
+            London tickers end in .LON (or .L), Xetra .DEX, Paris .PAR, Amsterdam .AMS, Madrid .MC. A ticker
+            with no ending is looked up in the US. Exchange prefixes such as BMEX:GRF also work. A manual price always wins
             over a fetched one; Fetch price gets the latest price and clears it.
           </p>
         </div>
@@ -286,7 +287,7 @@ function PricesForm({
             {symbols.map((symbol) => {
               const draft = drafts[symbol];
               const autoQuoteSymbol = quoteSymbolFor(symbol);
-              const effectiveQuoteSymbol = draft.quoteSymbol.trim().toUpperCase() || autoQuoteSymbol;
+              const effectiveQuoteSymbol = draft.quoteSymbol.trim() ? quoteSymbolFor(draft.quoteSymbol) : autoQuoteSymbol;
               const autoCurrency = quoteCurrencyFor(effectiveQuoteSymbol);
               const effectiveCurrency = draft.quoteCurrency === AUTO ? autoCurrency : draft.quoteCurrency;
               const quote = quotes[symbol];
