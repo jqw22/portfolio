@@ -36,6 +36,7 @@ import {
   formatCurrency,
   isHoldingSort,
   formatDate,
+  mergeLabels,
   type CashMovement,
   type CashMovementInput,
   type Holding,
@@ -326,7 +327,11 @@ export default function Index() {
 
   const handleLoadSample = () => {
     const sample = sampleLedger();
-    replaceLedger({ ...sample, labels, accounts: [...savedAccounts, ...sample.accounts] });
+    replaceLedger({
+      ...sample,
+      labels: mergeLabels(labels, sample.labels),
+      accounts: mergeLabels(savedAccounts, sample.accounts),
+    });
     toast({ title: 'Sample data loaded', description: 'Explore the dashboard, then reset the ledger from the data menu when ready.' });
   };
 
