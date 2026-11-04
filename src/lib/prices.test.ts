@@ -72,6 +72,26 @@ describe('symbols and currencies', () => {
     expect(planQuotes('GRF', settings)[0]).toMatchObject({ provider: 'relay', quoteSymbol: 'GRF.MC', currency: 'EUR' });
   });
 
+  it('reads crypto pairs in any common spelling as Yahoo pairs', () => {
+    for (const written of ['BTC.USD', 'btc/usd', 'BTC-USD', 'BTCUSD']) {
+      expect(quoteSymbolFor(written)).toBe('BTC-USD');
+    }
+    expect(yahooSymbolFor(quoteSymbolFor('BTC.USD'))).toBe('BTC-USD');
+    expect(quoteCurrencyFor(quoteSymbolFor('BTC.USD'))).toBe('USD');
+    expect(quoteSymbolFor('ETH.GBP')).toBe('ETH-GBP');
+    expect(quoteCurrencyFor('ETH-GBP')).toBe('GBP');
+    // Exchange suffixes and share classes are untouched.
+    expect(quoteSymbolFor('BRK.B')).toBe('BRK-B');
+    expect(quoteSymbolFor('VOD.L')).toBe('VOD.LON');
+    expect(quoteSymbolFor('BP.LON')).toBe('BP.LON');
+  });
+
+  it('prices crypto pairs from the relay only', () => {
+    const all = settingsWith({ relayUrl: 'https://relay.example', alphaVantageKey: 'av', finnhubKey: 'fh' });
+    expect(planQuotes('BTC.USD', all)).toEqual([{ provider: 'relay', quoteSymbol: 'BTC-USD', currency: 'USD' }]);
+    expect(planQuotes('BTC.USD', settingsWith({ alphaVantageKey: 'av', finnhubKey: 'fh' }))).toEqual([]);
+  });
+
   it('infers the quote currency from the exchange', () => {
     expect(quoteCurrencyFor('AAPL')).toBe('USD');
     expect(quoteCurrencyFor('VOD.LON')).toBe('GBX');
