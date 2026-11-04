@@ -14,6 +14,7 @@ import { HoldingsTable, HoldingsTotal } from '@/components/ledger/HoldingsTable'
 import { PricesDialog } from '@/components/ledger/PricesDialog';
 import { SummaryCards } from '@/components/ledger/SummaryCards';
 import { TransactionDialog } from '@/components/ledger/TransactionDialog';
+import { TotalValueChart } from '@/components/ledger/TotalValueChart';
 import { TransactionsTable } from '@/components/ledger/TransactionsTable';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -173,8 +174,8 @@ export default function Index() {
     fetchOne: fetchPrice,
   } = usePrices(openSymbols, currency);
   const accountSummary = useMemo(
-    () => summariseByAccount(portfolio.holdings, cashBalances, accounts, prices),
-    [portfolio.holdings, cashBalances, accounts, prices],
+    () => summariseByAccount(portfolio.holdings, cashBalances, prices),
+    [portfolio.holdings, cashBalances, prices],
   );
   const {
     snapshots,
@@ -188,8 +189,8 @@ export default function Index() {
     recordSnapshot(accountValues(accountSummary), currency);
   }, [isLoading, isRefreshing, accountSummary, currency, recordSnapshot]);
   const labelSummary = useMemo(
-    () => summariseByLabel(portfolio.holdings, transactions, cashBalances, labels, prices),
-    [portfolio.holdings, transactions, cashBalances, labels, prices],
+    () => summariseByLabel(portfolio.holdings, transactions, cashBalances, prices),
+    [portfolio.holdings, transactions, cashBalances, prices],
   );
 
   /** Pull the ledger from relays (when signed in) and fetch the latest prices. */
@@ -517,6 +518,7 @@ export default function Index() {
                 </TabsContent>
 
                 <TabsContent value="analysis" className="mt-4 space-y-6">
+                  <TotalValueChart snapshots={snapshots} accounts={accounts} currency={currency} />
                   <AccountValueChart snapshots={snapshots} accounts={accounts} currency={currency} />
                   <AnalysisTable
                     title="By account"
