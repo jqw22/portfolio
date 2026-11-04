@@ -475,6 +475,7 @@ export function HoldingsTotal({ holdings, cashBalances, currency, prices, title 
   const totalCostBasis = holdings.reduce((sum, holding) => sum + holding.costBasis, 0) + totalCash;
   const totalRealized = holdings.reduce((sum, holding) => sum + holding.realizedPnl, 0);
   const valueTotal = unrealisedTotal ? currentValueTotal(holdings, unrealisedTotal, totalCash) : null;
+  const dayTotal = prices ? totalDayChange(holdings, prices) : null;
 
   return (
     <Card className="gap-0 py-0">
@@ -483,11 +484,29 @@ export function HoldingsTotal({ holdings, cashBalances, currency, prices, title 
           <CardTitle className="text-base">{title}</CardTitle>
           <Badge variant="secondary">{holdings.length}</Badge>
         </div>
-        <dl className={cn('grid grid-cols-1 gap-4 sm:gap-8', valueTotal ? 'min-[420px]:grid-cols-2 md:grid-cols-4' : 'min-[420px]:grid-cols-3')}>
+        <dl className={cn('grid grid-cols-1 gap-4 sm:gap-8', valueTotal ? 'min-[420px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-5' : 'min-[420px]:grid-cols-3')}>
           <div className="sm:text-right">
             <dt className="text-xs text-muted-foreground">{cashBalances.length > 0 ? 'Cost basis incl. cash' : 'Cost basis'}</dt>
             <dd className="mt-1 font-semibold tabular-nums">{formatWhole(totalCostBasis, currency)}</dd>
           </div>
+          {dayTotal ? (
+            <div className="sm:text-right">
+              <dt className="text-xs text-muted-foreground">Day change</dt>
+              <dd className="mt-1 tabular-nums">
+                {dayTotal.percent !== null ? (
+                  <span className={cn('font-semibold', pnlClass(dayTotal.change))}>
+                    {formatWhole(dayTotal.change, currency)}{' '}
+                    <span className="text-xs font-normal">({formatPercent(dayTotal.percent, 1)})</span>
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+                {dayTotal.missing > 0 ? (
+                  <span className="block text-xs text-muted-foreground">{dayTotal.missing} without a day change</span>
+                ) : null}
+              </dd>
+            </div>
+          ) : null}
           {valueTotal ? (
             <div className="sm:text-right">
               <dt className="text-xs text-muted-foreground">{cashBalances.length > 0 ? 'Current value incl. cash' : 'Current value'}</dt>
