@@ -3,7 +3,8 @@ import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, type ChartConfig } from '@/components/ui/chart';
-import { formatCurrency, formatWhole } from '@/lib/portfolio';
+import { compactMoney, dayLabel, dayTime, fullDayLabel, monthTicks } from '@/lib/chartTime';
+import { formatWhole } from '@/lib/portfolio';
 import { chartData, localDate, type Snapshot } from '@/lib/snapshots';
 
 /**
@@ -34,41 +35,6 @@ interface Row {
   date: string;
   total: number;
   [key: string]: number | string | null;
-}
-
-function dayLabel(time: number): string {
-  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(time));
-}
-
-function dayTime(date: string): number {
-  return new Date(`${date}T00:00:00`).getTime();
-}
-
-/** Axis ticks on the 1st and 15th of each month between `start` and `end`. */
-function monthTicks(start: string, end: string): number[] {
-  const ticks: number[] = [];
-  const from = dayTime(start);
-  const to = dayTime(end);
-  const cursor = new Date(from);
-  cursor.setDate(1);
-  while (cursor.getTime() <= to) {
-    for (const day of [1, 15]) {
-      const time = new Date(cursor.getFullYear(), cursor.getMonth(), day).getTime();
-      if (time >= from && time <= to) ticks.push(time);
-    }
-    cursor.setMonth(cursor.getMonth() + 1);
-  }
-  return ticks;
-}
-
-function fullDayLabel(date: string): string {
-  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(
-    new Date(`${date}T00:00:00`),
-  );
-}
-
-function compactMoney(value: number, currency: string): string {
-  return formatCurrency(value, currency, { notation: 'compact', maximumFractionDigits: 1 });
 }
 
 interface TooltipEntry {

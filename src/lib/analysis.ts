@@ -99,20 +99,18 @@ function finish(rows: GroupSummary[]): GroupSummaryTable {
   return { rows, total };
 }
 
-/** Order names by a reference list, with names missing from it after, then the unnamed row. */
-function orderBy(names: string[]) {
-  return (group: GroupSummary): number => {
-    if (group.isCash) return names.length + 2;
-    if (group.name === undefined) return names.length + 1;
-    const index = names.findIndex((name) => name.toLowerCase() === group.name?.toLowerCase());
-    return index === -1 ? names.length : index;
-  };
+/** Rank for the fixed rows at the bottom: named rows first, then the unnamed row, then cash. */
+function rank(group: GroupSummary): number {
+  if (group.isCash) return 2;
+  return group.name === undefined ? 1 : 0;
 }
 
-function sortGroups(groups: Iterable<GroupSummary>, names: string[]): GroupSummary[] {
-  const order = orderBy(names);
+/** Named rows A to Z (ignoring case), then the "No account" / "Unlabelled" row, then cash. */
+function sortGroups(groups: Iterable<GroupSummary>): GroupSummary[] {
   return Array.from(groups).sort(
-    (a, b) => order(a) - order(b) || (a.name ?? '').localeCompare(b.name ?? '', undefined, { sensitivity: 'base' }),
+    (a, b) =>
+      rank(a) - rank(b) ||
+      (a.name ?? '').localeCompare(b.name ?? '', undefined, { sensitivity: 'base', numeric: true }),
   );
 }
 
@@ -120,7 +118,6 @@ function sortGroups(groups: Iterable<GroupSummary>, names: string[]): GroupSumma
 export function summariseByAccount(
   holdings: Holding[],
   cashBalances: CashBalance[],
-  accounts: string[],
   prices: Prices,
 ): GroupSummaryTable {
   const groups = new Map<string, GroupSummary>();
@@ -135,7 +132,7 @@ export function summariseByAccount(
   };
   for (const holding of holdings) addHolding(groupFor(holding.account), holding, prices);
   for (const cash of cashBalances) addCash(groupFor(cash.account), cash.balance);
-  return finish(sortGroups(groups.values(), accounts));
+  return finish(sortGroups(groups.values()));
 }
 
 /**
@@ -159,7 +156,6 @@ export function summariseByLabel(
   holdings: Holding[],
   transactions: Transaction[],
   cashBalances: CashBalance[],
-  labels: string[],
   prices: Prices,
 ): GroupSummaryTable {
   const byPosition = positionLabels(transactions);
@@ -174,7 +170,7 @@ export function summariseByLabel(
     }
     addHolding(group, holding, prices);
   }
-  const rows = sortGroups(groups.values(), labels);
+  const rows = sortGroups(groups.values());
   if (cashBalances.length > 0) {
     const cash = { ...emptyGroup('cash', 'Cash'), isCash: true };
     for (const balance of cashBalances) addCash(cash, balance.balance);
