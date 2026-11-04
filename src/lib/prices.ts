@@ -269,6 +269,16 @@ export function yahooSymbolFor(quoteSymbol: string): string {
   return `${base}.${ALPHA_VANTAGE_TO_YAHOO[suffix] ?? suffix}`;
 }
 
+/**
+ * The Yahoo Finance page for a stock, using the same symbol the relay asks Yahoo for
+ * (the Prices quote symbol when one is set), e.g. `BMEX:GRF` → `…/quote/GRF.MC`.
+ */
+export function yahooQuoteUrl(symbol: string, settings: Pick<PriceSettings, 'symbols'>): string {
+  const own = settings.symbols[symbol] ?? {};
+  const yahooSymbol = yahooSymbolFor(quoteSymbolFor(own.quoteSymbol?.trim() || symbol));
+  return `https://finance.yahoo.com/quote/${encodeURIComponent(yahooSymbol)}/`;
+}
+
 /** The relay address as a URL, or `null` when it isn't a valid https (or local http) address. */
 export function parseRelayUrl(value: string): URL | null {
   const text = value.trim();

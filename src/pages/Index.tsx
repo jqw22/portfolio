@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useSeoMeta } from '@unhead/react';
 import { LineChart, Plus, RefreshCw, Wallet } from 'lucide-react';
 
@@ -44,6 +44,7 @@ import {
   type TransactionInput,
 } from '@/lib/portfolio';
 import { sampleLedger } from '@/lib/sampleData';
+import { yahooQuoteUrl } from '@/lib/prices';
 
 interface AccountPositions {
   key: string;
@@ -180,6 +181,7 @@ export default function Index() {
     refresh: refreshPrices,
     fetchOne: fetchPrice,
   } = usePrices(openSymbols, currency);
+  const quoteUrlFor = useCallback((symbol: string) => yahooQuoteUrl(symbol, priceSettings), [priceSettings]);
   const accountSummary = useMemo(
     () => summariseByAccount(portfolio.holdings, cashBalances, prices),
     [portfolio.holdings, cashBalances, prices],
@@ -492,6 +494,7 @@ export default function Index() {
                         onSortChange={setHoldingSort}
                         stockNotes={stockNotes}
                         onNoteChange={setStockNote}
+                        quoteUrlFor={quoteUrlFor}
                       />
                     ))}
                     {accountPositions.length > 1 ? (
@@ -512,6 +515,7 @@ export default function Index() {
                       showFooter
                       stockNotes={stockNotes}
                       onNoteChange={setStockNote}
+                      quoteUrlFor={quoteUrlFor}
                     />
                   ) : null}
                 </TabsContent>
@@ -544,6 +548,8 @@ export default function Index() {
                     unnamedLabel="No account"
                     summary={accountSummary}
                     currency={currency}
+                    showShare={false}
+                    showCash
                   />
                   <AnalysisTable
                     title="By label"

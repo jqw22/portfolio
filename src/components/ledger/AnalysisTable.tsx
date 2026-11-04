@@ -21,6 +21,10 @@ interface AnalysisTableProps {
   unnamedLabel: string;
   summary: GroupSummaryTable;
   currency: string;
+  /** Show the Share of value column (as a percentage). */
+  showShare?: boolean;
+  /** Show a Cash column after Current value. */
+  showCash?: boolean;
 }
 
 function pnlClass(value: number): string {
@@ -32,7 +36,19 @@ function formatShare(share: number): string {
   return `${(share * 100).toFixed(1)}%`;
 }
 
-function SummaryCells({ row, currency, isTotal = false }: { row: GroupSummary; currency: string; isTotal?: boolean }) {
+function SummaryCells({
+  row,
+  currency,
+  isTotal = false,
+  showShare,
+  showCash,
+}: {
+  row: GroupSummary;
+  currency: string;
+  isTotal?: boolean;
+  showShare: boolean;
+  showCash: boolean;
+}) {
   const weight = isTotal ? 'font-semibold' : 'font-medium';
   return (
     <>
@@ -44,6 +60,9 @@ function SummaryCells({ row, currency, isTotal = false }: { row: GroupSummary; c
           <p className="mt-0.5 text-xs font-normal text-muted-foreground">{row.unpriced} at cost</p>
         ) : null}
       </TableCell>
+      {showCash ? (
+        <TableCell className={cn('text-right tabular-nums', weight)}>{formatWhole(row.cash, currency)}</TableCell>
+      ) : null}
       <TableCell className="text-right tabular-nums">
         {row.priced > 0 ? (
           <span className={cn(weight, pnlClass(row.unrealised))}>{formatWhole(row.unrealised, currency)}</span>
@@ -51,30 +70,24 @@ function SummaryCells({ row, currency, isTotal = false }: { row: GroupSummary; c
           <span className="text-muted-foreground">—</span>
         )}
       </TableCell>
-      <TableCell className="text-right tabular-nums">
+      <TableCell className={cn('text-right tabular-nums', !showShare && 'pr-6')}>
         {row.isCash ? (
           <span className="text-muted-foreground">—</span>
         ) : (
           <span className={cn(weight, pnlClass(row.realisedPnl))}>{formatWhole(row.realisedPnl, currency)}</span>
         )}
       </TableCell>
-      <TableCell className="pr-6 text-right tabular-nums">
-        <span className={weight}>{formatShare(row.share)}</span>
-        {!isTotal ? (
-          <div className="mt-1.5 ml-auto h-1.5 w-full max-w-24 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-            <div
-              className="h-full rounded-full bg-primary/70"
-              style={{ width: `${Math.min(100, Math.max(0, row.share * 100))}%` }}
-            />
-          </div>
-        ) : null}
-      </TableCell>
+      {showShare ? (
+        <TableCell className="pr-6 text-right tabular-nums">
+          <span className={weight}>{formatShare(row.share)}</span>
+        </TableCell>
+      ) : null}
     </>
   );
 }
 
 /** One summary row per account or label, with a total row. */
-export function AnalysisTable({ title, description, groupHeading, unnamedLabel, summary, currency }: AnalysisTableProps) {
+export function AnalysisTable({ title, description, groupHeading, unnamedLabel, summary, currency, showShare = true, showCash = false }: AnalysisTableProps) {
   return (
     <Card className="gap-0 py-0">
       <CardHeader className="gap-0 border-b pt-5 [.border-b]:pb-5">
@@ -91,9 +104,10 @@ export function AnalysisTable({ title, description, groupHeading, unnamedLabel, 
               <TableHead className="w-24 text-right">Positions</TableHead>
               <TableHead className="text-right">Cost basis</TableHead>
               <TableHead className="text-right">Current value</TableHead>
+              {showCash ? <TableHead className="text-right">Cash</TableHead> : null}
               <TableHead className="text-right">Unrealised</TableHead>
-              <TableHead className="text-right">Realised P&L</TableHead>
-              <TableHead className="w-32 pr-6 text-right">Share of value</TableHead>
+              <TableHead className={cn('text-right', !showShare && 'pr-6')}>Realised P&L</TableHead>
+              {showShare ? <TableHead className="w-32 pr-6 text-right">Share of value</TableHead> : null}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -108,14 +122,14 @@ export function AnalysisTable({ title, description, groupHeading, unnamedLabel, 
                     <span className="text-muted-foreground">{unnamedLabel}</span>
                   )}
                 </TableCell>
-                <SummaryCells row={row} currency={currency} />
+                <SummaryCells row={row} currency={currency} showShare={showShare} showCash={showCash} />
               </TableRow>
             ))}
           </TableBody>
           <TableFooter>
             <TableRow className="hover:bg-transparent">
               <TableCell className="pl-6">Total</TableCell>
-              <SummaryCells row={summary.total} currency={currency} isTotal />
+              <SummaryCells row={summary.total} currency={currency} isTotal showShare={showShare} showCash={showCash} />
             </TableRow>
           </TableFooter>
         </Table>
