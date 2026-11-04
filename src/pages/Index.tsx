@@ -445,8 +445,8 @@ export default function Index() {
               <Tabs defaultValue="holdings" className="min-w-0">
                 <TabsList>
                   <TabsTrigger value="holdings">Holdings</TabsTrigger>
-                  <TabsTrigger value="transactions">Transactions</TabsTrigger>
                   <TabsTrigger value="analysis">Analysis</TabsTrigger>
+                  <TabsTrigger value="transactions">Transactions</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="holdings" className="mt-4 space-y-6">
