@@ -64,13 +64,14 @@ export function SummaryCards({ portfolio, cashTotal, cashAccounts, currency, pri
       : current.missing > 0
         ? `${pluralize(current.missing, 'position')} without a price, not counted`
         : `${gainSign}${gainPercent.toFixed(2)}% on cost`;
+  const totalValue = current.value + cashTotal;
   const realizedPositive = portfolio.totalRealizedPnl >= 0;
   const RealizedIcon = realizedPositive ? TrendingUp : TrendingDown;
 
   const items: SummaryItem[] = [
     {
       label: 'Total value',
-      value: formatWhole(current.value + cashTotal, currency),
+      value: formatWhole(totalValue, currency),
       hint: 'Stocks plus cash',
       icon: Wallet,
       iconClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
@@ -85,7 +86,10 @@ export function SummaryCards({ portfolio, cashTotal, cashAccounts, currency, pri
     {
       label: 'Cash value',
       value: formatWhole(cashTotal, currency),
-      hint: `Across ${pluralize(cashAccounts, 'account')}`,
+      hint:
+        totalValue > 0
+          ? `${((cashTotal / totalValue) * 100).toFixed(1)}% of total value`
+          : `Across ${pluralize(cashAccounts, 'account')}`,
       icon: Banknote,
       iconClass: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
       valueClass: cashTotal < 0 ? 'text-rose-600 dark:text-rose-400' : undefined,
