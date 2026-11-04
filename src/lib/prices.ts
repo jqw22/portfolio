@@ -239,11 +239,52 @@ function fromExchangePrefix(symbol: string): string {
   return suffix ? `${base}.${suffix}` : base;
 }
 
+/** Currencies a crypto coin can be priced in, as the second half of a pair like `BTC-USD`. */
+const CRYPTO_QUOTE_CURRENCIES = new Set(['USD', 'GBP', 'EUR', 'JPY', 'CHF', 'CAD', 'AUD']);
+
+/** Well-known coins, so a pair written with no separator (`BTCUSD`) can be recognised. */
+const KNOWN_COINS = ['BTC', 'ETH', 'SOL', 'XRP', 'ADA', 'DOGE', 'LTC', 'DOT', 'BNB', 'AVAX', 'LINK', 'XLM', 'BCH'];
+
+const CRYPTO_PAIR = /^([A-Z0-9]{2,10})[-./]([A-Z]{3})$/;
+
+/**
+ * A crypto pair in Yahoo's spelling (`BTC-USD`), from `BTC.USD`, `BTC/USD`, `BTC-USD`
+ * or `BTCUSD`; `null` when the symbol isn't one. A dot followed by a currency code is
+ * never an exchange suffix, so `BTC.USD` can't be mistaken for a listed share.
+ */
+export function cryptoPairFor(symbol: string): { coin: string; currency: string; symbol: string } | null {
+  const value = symbol.trim().toUpperCase();
+  const match = CRYPTO_PAIR.exec(value);
+  let coin: string | undefined;
+  let currency: string | undefined;
+  if (match && CRYPTO_QUOTE_CURRENCIES.has(match[2])) {
+    [, coin, currency] = match;
+  } else {
+    for (const known of KNOWN_COINS) {
+      const rest = value.slice(known.length);
+      if (value.startsWith(known) && CRYPTO_QUOTE_CURRENCIES.has(rest)) {
+        coin = known;
+        currency = rest;
+        break;
+      }
+    }
+  }
+  if (!coin || !currency) return null;
+  return { coin, currency, symbol: `${coin}-${currency}` };
+}
+
+/** True for crypto pairs such as `BTC-USD`, which only the relay (Yahoo) can price. */
+export function isCryptoSymbol(quoteSymbol: string): boolean {
+  return cryptoPairFor(quoteSymbol) !== null;
+}
+
 /**
  * The symbol to ask the price source for, e.g. `VOD.L` → `VOD.LON`, `BRK.B` → `BRK-B`,
- * `BMEX:GRF` → `GRF.MC`.
+ * `BMEX:GRF` → `GRF.MC`, `BTC.USD` → `BTC-USD`.
  */
 export function quoteSymbolFor(symbol: string): string {
+  const crypto = cryptoPairFor(fromExchangePrefix(symbol));
+  if (crypto) return crypto.symbol;
   const [base, suffix] = splitSuffix(fromExchangePrefix(symbol));
   if (!suffix) return base;
   if (SHARE_CLASSES.has(suffix)) return `${base}-${suffix}`;
@@ -252,6 +293,8 @@ export function quoteSymbolFor(symbol: string): string {
 
 /** The currency a quote symbol trades in: USD without a suffix, else by exchange. */
 export function quoteCurrencyFor(quoteSymbol: string): string {
+  const crypto = cryptoPairFor(quoteSymbol);
+  if (crypto) return crypto.currency;
   const [, suffix] = splitSuffix(quoteSymbol);
   if (!suffix) return 'USD';
   return SUFFIX_CURRENCY[suffix] ?? 'USD';
@@ -259,6 +302,7 @@ export function quoteCurrencyFor(quoteSymbol: string): string {
 
 /** True for US-style tickers (no exchange suffix), which Finnhub's free tier covers. */
 export function isUsSymbol(quoteSymbol: string): boolean {
+  if (isCryptoSymbol(quoteSymbol)) return false;
   return splitSuffix(quoteSymbol)[1] === undefined;
 }
 
@@ -296,6 +340,7 @@ export interface QuotePlan {
  * The sources to try for a symbol, best first; empty when nothing can price it.
  * The relay comes first when set up (no daily limit). US tickers then go to
  * Finnhub when its key is set (it allows far more calls), then Alpha Vantage.
+ * Crypto pairs (`BTC-USD`) go to the relay only.
  */
 export function planQuotes(symbol: string, settings: PriceSettings): QuotePlan[] {
   const own = settings.symbols[symbol] ?? {};
@@ -308,7 +353,8 @@ export function planQuotes(symbol: string, settings: PriceSettings): QuotePlan[]
     plans.push({ provider: 'relay', quoteSymbol: yahooSymbolFor(quoteSymbol), currency, ...set });
   }
   if (settings.finnhubKey.trim() && isUsSymbol(quoteSymbol)) plans.push({ provider: 'finnhub', quoteSymbol, currency, ...set });
-  if (settings.alphaVantageKey.trim()) plans.push({ provider: 'alphavantage', quoteSymbol, currency, ...set });
+  // Alpha Vantage's stock quote doesn't cover crypto pairs; asking would only use up the daily limit.
+  if (settings.alphaVantageKey.trim() && !isCryptoSymbol(quoteSymbol)) plans.push({ provider: 'alphavantage', quoteSymbol, currency, ...set });
   return plans;
 }
 
