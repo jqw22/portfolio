@@ -130,7 +130,7 @@ export default function Index() {
     labels,
     addLabel,
     deleteLabel,
-    accounts,
+    accounts: savedAccounts,
     addAccount,
     renameAccount,
     deleteAccount,
@@ -150,6 +150,11 @@ export default function Index() {
   const [pricesOpen, setPricesOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Accounts are listed A to Z everywhere: drop-downs, holdings, charts and the Accounts dialog.
+  const accounts = useMemo(
+    () => [...savedAccounts].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true })),
+    [savedAccounts],
+  );
   const portfolio = useMemo(() => computePortfolio(transactions), [transactions]);
   const cashBalances = useMemo(
     () => cashBalanceList({ transactions, cash }, accounts),
@@ -318,7 +323,7 @@ export default function Index() {
 
   const handleLoadSample = () => {
     const sample = sampleLedger();
-    replaceLedger({ ...sample, labels, accounts: [...accounts, ...sample.accounts] });
+    replaceLedger({ ...sample, labels, accounts: [...savedAccounts, ...sample.accounts] });
     toast({ title: 'Sample data loaded', description: 'Explore the dashboard, then reset the ledger from the data menu when ready.' });
   };
 
@@ -371,7 +376,7 @@ export default function Index() {
         canSync={canSync}
       >
         <DataMenu
-          ledger={{ transactions, cash, labels, accounts, stockNotes }}
+          ledger={{ transactions, cash, labels, accounts: savedAccounts, stockNotes }}
           onRequestImport={() => fileInputRef.current?.click()}
           onLoadSample={handleLoadSample}
           onReset={() => {
