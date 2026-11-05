@@ -28,8 +28,6 @@ export interface GroupSummary {
   priced: number;
   /** Open positions without a price, counted at cost. */
   unpriced: number;
-  /** Realised P&L from every position in the group, open or closed. */
-  realisedPnl: number;
   cash: number;
   /** Share of the total current value, 0 to 1. */
   share: number;
@@ -52,14 +50,12 @@ function emptyGroup(key: string, name?: string): GroupSummary {
     unrealised: 0,
     priced: 0,
     unpriced: 0,
-    realisedPnl: 0,
     cash: 0,
     share: 0,
   };
 }
 
 function addHolding(group: GroupSummary, holding: Holding, prices: Prices): void {
-  group.realisedPnl += holding.realizedPnl;
   if (holding.quantity <= EPSILON) return;
   group.positions += 1;
   group.costBasis += holding.costBasis;
@@ -90,7 +86,6 @@ function finish(rows: GroupSummary[]): GroupSummaryTable {
     total.unrealised += row.unrealised;
     total.priced += row.priced;
     total.unpriced += row.unpriced;
-    total.realisedPnl += row.realisedPnl;
     total.cash += row.cash;
   }
   const denominator = Math.abs(total.currentValue) > EPSILON ? total.currentValue : 0;
@@ -114,7 +109,7 @@ function sortGroups(groups: Iterable<GroupSummary>): GroupSummary[] {
   );
 }
 
-/** One row per account: its positions (open and closed) plus its cash. */
+/** One row per account: its open positions plus its cash. */
 export function summariseByAccount(
   holdings: Holding[],
   cashBalances: CashBalance[],

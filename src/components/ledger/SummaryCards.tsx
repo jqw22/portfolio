@@ -65,8 +65,6 @@ export function SummaryCards({ portfolio, cashTotal, cashAccounts, currency, pri
         ? `${pluralize(current.missing, 'position')} without a price, not counted`
         : `${gainSign}${gainPercent.toFixed(2)}% on cost`;
   const totalValue = current.value + cashTotal;
-  const realizedPositive = portfolio.totalRealizedPnl >= 0;
-  const RealizedIcon = realizedPositive ? TrendingUp : TrendingDown;
 
   const items: SummaryItem[] = [
     {
@@ -112,22 +110,10 @@ export function SummaryCards({ portfolio, cashTotal, cashAccounts, currency, pri
             ? 'text-emerald-600 dark:text-emerald-400'
             : 'text-rose-600 dark:text-rose-400',
     },
-    {
-      label: 'Realised',
-      value: formatWhole(portfolio.totalRealizedPnl, currency),
-      hint: `${formatWhole(portfolio.totalProceeds, currency)} in proceeds`,
-      icon: RealizedIcon,
-      iconClass: realizedPositive
-        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-        : 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
-      valueClass: realizedPositive
-        ? 'text-emerald-600 dark:text-emerald-400'
-        : 'text-rose-600 dark:text-rose-400',
-    },
   ];
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {items.map((item) => (
         <Card key={item.label} className="gap-0 py-0">
           <CardContent className="flex flex-col gap-4 p-5">

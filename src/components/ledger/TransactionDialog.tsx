@@ -53,6 +53,16 @@ interface TransactionDialogProps {
   onSubmitCash?: (input: CashMovementInput) => void;
   /** Opens the accounts manager, offered when there are no accounts yet. */
   onManageAccounts?: () => void;
+  /** Starting values for a new trade, e.g. the account and stock of a holdings row. */
+  prefill?: TradePrefill | null;
+}
+
+/** Fields a new trade can start with. */
+export interface TradePrefill {
+  symbol: string;
+  name?: string;
+  account?: string;
+  label?: string;
 }
 
 type EntryType = TransactionType | CashType;
@@ -84,7 +94,11 @@ interface FormState {
 
 type FormErrors = Partial<Record<keyof FormState | 'cash', string>>;
 
-function initialForm(transaction: Transaction | null, cashMovement: CashMovement | null): FormState {
+function initialForm(
+  transaction: Transaction | null,
+  cashMovement: CashMovement | null,
+  prefill: TradePrefill | null = null,
+): FormState {
   if (cashMovement) {
     return {
       type: cashMovement.type,
@@ -102,16 +116,16 @@ function initialForm(transaction: Transaction | null, cashMovement: CashMovement
   }
   return {
     type: transaction?.type ?? 'buy',
-    symbol: transaction?.symbol ?? '',
-    name: transaction?.name ?? '',
+    symbol: transaction?.symbol ?? prefill?.symbol ?? '',
+    name: transaction?.name ?? prefill?.name ?? '',
     date: transaction?.date ?? todayIso(),
     quantity: transaction ? String(transaction.quantity) : '',
     price: transaction ? String(transaction.price) : '',
     fees: transaction && transaction.fees ? String(transaction.fees) : '',
     amount: '',
     notes: transaction?.notes ?? '',
-    label: transaction?.label,
-    account: transaction?.account,
+    label: transaction ? transaction.label : prefill?.label,
+    account: transaction ? transaction.account : prefill?.account,
   };
 }
 
@@ -136,6 +150,7 @@ export function TransactionDialog({
   onSubmit,
   onSubmitCash,
   onManageAccounts,
+  prefill = null,
 }: TransactionDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -147,7 +162,7 @@ export function TransactionDialog({
           </DialogDescription>
         </DialogHeader>
         <TransactionForm
-          key={cashMovement?.id ?? transaction?.id ?? 'new'}
+          key={cashMovement?.id ?? transaction?.id ?? (prefill ? `new:${prefill.account ?? ''}:${prefill.symbol}` : 'new')}
           transaction={transaction}
           cashMovement={cashMovement}
           transactions={transactions}
@@ -162,6 +177,7 @@ export function TransactionDialog({
           onSubmit={onSubmit}
           onSubmitCash={onSubmitCash}
           onManageAccounts={onManageAccounts}
+          prefill={prefill}
         />
       </DialogContent>
     </Dialog>
@@ -183,6 +199,7 @@ interface TransactionFormProps {
   onSubmit: (input: TransactionInput) => void;
   onSubmitCash?: (input: CashMovementInput) => void;
   onManageAccounts?: () => void;
+  prefill: TradePrefill | null;
 }
 
 function shortfallMessage(shortfall: CashBalance, currency: string): string {
@@ -206,8 +223,9 @@ function TransactionForm({
   onSubmit,
   onSubmitCash,
   onManageAccounts,
+  prefill,
 }: TransactionFormProps) {
-  const [form, setForm] = useState<FormState>(() => initialForm(transaction, cashMovement));
+  const [form, setForm] = useState<FormState>(() => initialForm(transaction, cashMovement, prefill));
   const [errors, setErrors] = useState<FormErrors>({});
 
   const updateForm = (patch: Partial<FormState>) => {

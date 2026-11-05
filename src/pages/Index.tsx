@@ -13,7 +13,7 @@ import { EmptyState } from '@/components/ledger/EmptyState';
 import { HoldingsTable, HoldingsTotal } from '@/components/ledger/HoldingsTable';
 import { PricesDialog } from '@/components/ledger/PricesDialog';
 import { SummaryCards } from '@/components/ledger/SummaryCards';
-import { TransactionDialog } from '@/components/ledger/TransactionDialog';
+import { TransactionDialog, type TradePrefill } from '@/components/ledger/TransactionDialog';
 import { TotalValueChart } from '@/components/ledger/TotalValueChart';
 import { TransactionsTable } from '@/components/ledger/TransactionsTable';
 import { Button } from '@/components/ui/button';
@@ -37,6 +37,7 @@ import {
   isHoldingSort,
   formatDate,
   mergeLabels,
+  sortByDate,
   type CashMovement,
   type CashMovementInput,
   type Holding,
@@ -111,7 +112,7 @@ export default function Index() {
   useSeoMeta({
     title: 'Virtual Stock Portfolio — Private stock transaction tracker',
     description:
-      'Record stock buys and sells with dates, quantities, prices and fees. Track cost basis and realised P&L — encrypted and synced to your own Nostr relays.',
+      'Record stock buys and sells with dates, quantities, prices and fees. Track cost basis, value and gains — encrypted and synced to your own Nostr relays.',
   });
 
   const {
@@ -148,6 +149,7 @@ export default function Index() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [editingCash, setEditingCash] = useState<CashMovement | null>(null);
+  const [prefill, setPrefill] = useState<TradePrefill | null>(null);
   const [accountsOpen, setAccountsOpen] = useState(false);
   const [pricesOpen, setPricesOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -264,6 +266,18 @@ export default function Index() {
   const openAdd = () => {
     setEditing(null);
     setEditingCash(null);
+    setPrefill(null);
+    setDialogOpen(true);
+  };
+
+  // A new trade for one holdings row: its account, stock and the label of its latest labelled trade.
+  const openAddFor = (holding: Holding) => {
+    const latestLabel = sortByDate(transactions)
+      .filter((tx) => tx.symbol === holding.symbol && tx.account === holding.account && tx.label)
+      .at(-1)?.label;
+    setEditing(null);
+    setEditingCash(null);
+    setPrefill({ symbol: holding.symbol, name: holding.name, account: holding.account, label: latestLabel });
     setDialogOpen(true);
   };
 
@@ -462,7 +476,7 @@ export default function Index() {
                           Open positions
                         </h2>
                         <p className="text-sm text-muted-foreground">
-                          Grouped by account. Cost basis and realised P&L are calculated with the average-cost method.
+                          Grouped by account. Cost basis is calculated with the average-cost method.
                           Cash is what each account holds after deposits, withdrawals, buys and sells.
                         </p>
                       </div>
@@ -500,6 +514,7 @@ export default function Index() {
                         stockNotes={stockNotes}
                         onNoteChange={setStockNote}
                         quoteUrlFor={quoteUrlFor}
+                        onAddTransaction={openAddFor}
                       />
                     ))}
                     {accountPositions.length > 1 ? (
@@ -512,17 +527,6 @@ export default function Index() {
                       />
                     ) : null}
                   </section>
-                  {portfolio.closedHoldings.length > 0 ? (
-                    <HoldingsTable
-                      holdings={portfolio.closedHoldings}
-                      currency={currency}
-                      title="Closed positions"
-                      showFooter
-                      stockNotes={stockNotes}
-                      onNoteChange={setStockNote}
-                      quoteUrlFor={quoteUrlFor}
-                    />
-                  ) : null}
                 </TabsContent>
 
                 <TabsContent value="transactions" className="mt-4">
@@ -548,7 +552,7 @@ export default function Index() {
                   <AccountValueChart snapshots={snapshots} accounts={accounts} currency={currency} />
                   <AnalysisTable
                     title="By account"
-                    description="Each account's positions and cash. Realised P&L includes closed positions; unpriced holdings count at cost."
+                    description="Each account's open positions and cash. Unpriced holdings count at cost."
                     groupHeading="Account"
                     unnamedLabel="No account"
                     summary={accountSummary}
@@ -588,6 +592,7 @@ export default function Index() {
         onSubmit={handleSubmit}
         onSubmitCash={handleSubmitCash}
         onManageAccounts={() => setAccountsOpen(true)}
+        prefill={prefill}
       />
 
       <PricesDialog

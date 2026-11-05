@@ -63,18 +63,11 @@ function SummaryCells({
       {showCash ? (
         <TableCell className={cn('text-right tabular-nums', weight)}>{formatWhole(row.cash, currency)}</TableCell>
       ) : null}
-      <TableCell className="text-right tabular-nums">
+      <TableCell className={cn('text-right tabular-nums', !showShare && 'pr-6')}>
         {row.priced > 0 ? (
           <span className={cn(weight, pnlClass(row.unrealised))}>{formatWhole(row.unrealised, currency)}</span>
         ) : (
           <span className="text-muted-foreground">—</span>
-        )}
-      </TableCell>
-      <TableCell className={cn('text-right tabular-nums', !showShare && 'pr-6')}>
-        {row.isCash ? (
-          <span className="text-muted-foreground">—</span>
-        ) : (
-          <span className={cn(weight, pnlClass(row.realisedPnl))}>{formatWhole(row.realisedPnl, currency)}</span>
         )}
       </TableCell>
       {showShare ? (
@@ -105,8 +98,7 @@ export function AnalysisTable({ title, description, groupHeading, unnamedLabel, 
               <TableHead className="text-right">Cost basis</TableHead>
               <TableHead className="text-right">Current value</TableHead>
               {showCash ? <TableHead className="text-right">Cash</TableHead> : null}
-              <TableHead className="text-right">Unrealised</TableHead>
-              <TableHead className={cn('text-right', !showShare && 'pr-6')}>Realised P&L</TableHead>
+              <TableHead className={cn('text-right', !showShare && 'pr-6')}>Unrealised</TableHead>
               {showShare ? <TableHead className="w-32 pr-6 text-right">Share of value</TableHead> : null}
             </TableRow>
           </TableHeader>
