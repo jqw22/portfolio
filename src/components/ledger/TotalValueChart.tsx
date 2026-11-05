@@ -27,11 +27,12 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import {
-  compactMoney,
+  axisMoney,
   dayLabel,
   dayTime,
+  fittedTimeAxis,
   fullDayLabel,
-  monthTicks,
+  valueScale,
 } from "@/lib/chartTime";
 import { formatWhole } from "@/lib/portfolio";
 import { chartData, localDate, type Snapshot } from "@/lib/snapshots";
@@ -115,19 +116,24 @@ export function TotalValueChart({
   onRestart,
 }: TotalValueChartProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const { rows, domain, ticks } = useMemo(() => {
+  const { rows, domain, ticks, yScale } = useMemo(() => {
     const data = chartData(snapshots, currency, accounts, localDate());
     const rows: Row[] = data.rows.map((entry) => ({
       time: dayTime(entry.date),
       date: entry.date,
       total: entry.total,
     }));
-    // Half a day of room on the left so the first point isn't clipped by the edge.
-    const domain: [number, number] = [
-      dayTime(data.start) - 43_200_000,
-      dayTime(data.end),
-    ];
-    return { rows, domain, ticks: monthTicks(data.start, data.end) };
+    // Span only the saved days (up to the last 3 months), not an empty window.
+    const axis =
+      rows.length > 0
+        ? fittedTimeAxis(rows[0].date, rows[rows.length - 1].date)
+        : { domain: [0, 1] as [number, number], ticks: [] };
+    return {
+      rows,
+      domain: axis.domain,
+      ticks: axis.ticks,
+      yScale: valueScale(rows.map((row) => row.total)),
+    };
   }, [snapshots, accounts, currency]);
 
   const first = rows[0];
@@ -170,7 +176,7 @@ export function TotalValueChart({
           <CardDescription>
             All accounts together, positions at latest prices plus cash, saved
             once a day when Virtual Stock Portfolio is open (the last save of the day counts).
-            Last 3 months.
+            Up to the last 3 months.
           </CardDescription>
           {onRestart && rows.length > 0 ? (
             <Button
@@ -237,11 +243,17 @@ export function TotalValueChart({
                 minTickGap={24}
               />
               <YAxis
-                tickFormatter={(value: number) => compactMoney(value, currency)}
+                type="number"
+                domain={yScale.domain}
+                ticks={yScale.ticks}
+                interval={0}
+                allowDataOverflow
+                tickFormatter={(value: number) =>
+                  axisMoney(value, yScale.step, currency)
+                }
                 tickLine={false}
                 axisLine={false}
-                width={64}
-                domain={["auto", "auto"]}
+                width={72}
               />
               <ChartTooltip
                 content={
@@ -255,7 +267,7 @@ export function TotalValueChart({
                 stroke="var(--color-total)"
                 strokeWidth={2}
                 fill="url(#total-value-fill)"
-                baseValue="dataMin"
+                baseValue={yScale.domain[0]}
                 dot={
                   rows.length <= 31
                     ? { r: 3, strokeWidth: 2, fill: "var(--background)" }
