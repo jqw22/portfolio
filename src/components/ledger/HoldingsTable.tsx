@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Plus } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Table,
   TableBody,
@@ -63,6 +64,8 @@ interface HoldingsTableProps {
   onNoteChange?: (symbol: string, note: string) => void;
   /** The Yahoo Finance page for a symbol. When given, each stock gets a link icon. */
   quoteUrlFor?: (symbol: string) => string;
+  /** When given, each position gets a button that opens the trade form filled in for its account and stock. */
+  onAddTransaction?: (holding: Holding) => void;
 }
 
 interface SortableHeadProps {
@@ -205,6 +208,7 @@ export function HoldingsTable({
   stockNotes,
   quoteUrlFor,
   onNoteChange,
+  onAddTransaction,
 }: HoldingsTableProps) {
   const rows = sort ? sortHoldings(holdings, sort) : holdings;
   const showMarket = prices !== undefined;
@@ -212,8 +216,10 @@ export function HoldingsTable({
   const dayTotal = prices ? totalDayChange(holdings, prices) : null;
   const totalCash = cashBalances.reduce((sum, cash) => sum + cash.balance, 0);
   const totalCostBasis = holdings.reduce((sum, holding) => sum + holding.costBasis, 0) + totalCash;
-  const totalRealized = holdings.reduce((sum, holding) => sum + holding.realizedPnl, 0);
   const valueTotal = unrealisedTotal ? currentValueTotal(holdings, unrealisedTotal, totalCash) : null;
+  const showAdd = onAddTransaction !== undefined;
+  // The last column carries the right padding: the add button's column when shown.
+  const lastPad = (isLast: boolean) => (isLast ? 'pr-6' : undefined);
 
   return (
     <Card className="gap-0 py-0">
@@ -246,18 +252,21 @@ export function HoldingsTable({
               <SortableHead label="Label" sortKey="label" sort={sort} onSortChange={onSortChange} className="w-24" />
               <TableHead className="text-right">Shares</TableHead>
               <TableHead className="text-right">Avg cost</TableHead>
-              <TableHead className="text-right">Cost basis</TableHead>
+              <TableHead className={cn('text-right', lastPad(!showMarket && !showAdd))}>Cost basis</TableHead>
               {showMarket ? <TableHead className="text-right">Latest price</TableHead> : null}
               {showMarket ? <TableHead className="text-right">Day change</TableHead> : null}
               {showMarket ? <TableHead className="text-right">Current value</TableHead> : null}
-              {showMarket ? <TableHead className="text-right">Unrealised</TableHead> : null}
-              <TableHead className="w-28 pr-6 text-right">Realised P&L</TableHead>
+              {showMarket ? <TableHead className={cn('text-right', lastPad(!showAdd))}>Unrealised</TableHead> : null}
+              {showAdd ? (
+                <TableHead className="w-20 pr-6 text-right">
+                  <span className="sr-only">Add transaction</span>
+                </TableHead>
+              ) : null}
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((holding) => {
               const isOpen = holding.quantity > 0;
-              const positive = holding.realizedPnl >= 0;
               const price = prices?.[holding.symbol];
               const unrealised = isOpen ? unrealisedGain(holding, price?.price) : null;
               return (
@@ -313,7 +322,7 @@ export function HoldingsTable({
                   <TableCell className="text-right tabular-nums">
                     {isOpen ? formatCurrency(holding.averageCost, currency) : '—'}
                   </TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">
+                  <TableCell className={cn('text-right font-medium tabular-nums', lastPad(!showMarket && !showAdd))}>
                     {formatWhole(holding.costBasis, currency)}
                   </TableCell>
                   {showMarket ? (
@@ -344,7 +353,7 @@ export function HoldingsTable({
                     </TableCell>
                   ) : null}
                   {showMarket ? (
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className={cn('text-right tabular-nums', lastPad(!showAdd))}>
                       {unrealised ? (
                         <div className={pnlClass(unrealised.gain)}>
                           <span className="font-medium">{formatWhole(unrealised.gain, currency)}</span>
@@ -357,20 +366,21 @@ export function HoldingsTable({
                       )}
                     </TableCell>
                   ) : null}
-                  <TableCell className="pr-6 text-right tabular-nums">
-                    <span
-                      className={cn(
-                        'font-medium',
-                        holding.realizedPnl === 0
-                          ? 'text-muted-foreground'
-                          : positive
-                            ? 'text-emerald-600 dark:text-emerald-400'
-                            : 'text-rose-600 dark:text-rose-400',
-                      )}
-                    >
-                      {holding.realizedPnl === 0 ? '—' : formatWhole(holding.realizedPnl, currency)}
-                    </span>
-                  </TableCell>
+                  {showAdd ? (
+                    <TableCell className="pr-6 text-right">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="size-8"
+                        onClick={() => onAddTransaction(holding)}
+                        aria-label={`Add transaction for ${holdingDisplayName(holding)}${holding.account ? ` in ${holding.account}` : ''}`}
+                        title={`Add a buy or sell of ${holdingDisplayName(holding)}${holding.account ? ` in ${holding.account}` : ''}`}
+                      >
+                        <Plus />
+                      </Button>
+                    </TableCell>
+                  ) : null}
                 </TableRow>
               );
             })}
@@ -394,7 +404,11 @@ export function HoldingsTable({
                 <TableCell className="text-right text-muted-foreground">—</TableCell>
                 <TableCell className="text-right text-muted-foreground">—</TableCell>
                 <TableCell
-                  className={cn('text-right font-medium tabular-nums', cash.balance < 0 && 'text-destructive')}
+                  className={cn(
+                    'text-right font-medium tabular-nums',
+                    cash.balance < 0 && 'text-destructive',
+                    lastPad(!showMarket && !showAdd),
+                  )}
                 >
                   {formatWhole(cash.balance, currency)}
                 </TableCell>
@@ -407,10 +421,10 @@ export function HoldingsTable({
                     >
                       {formatWhole(cash.balance, currency)}
                     </TableCell>
-                    <TableCell className="text-right text-muted-foreground">—</TableCell>
+                    <TableCell className={cn('text-right text-muted-foreground', lastPad(!showAdd))}>—</TableCell>
                   </>
                 ) : null}
-                <TableCell className="pr-6 text-right text-muted-foreground">—</TableCell>
+                {showAdd ? <TableCell className="pr-6" /> : null}
               </TableRow>
             ))}
           </TableBody>
@@ -420,7 +434,7 @@ export function HoldingsTable({
                 <TableCell className="pl-6" colSpan={4 + (showAccount ? 1 : 0)}>
                   {footerLabel ?? (cashBalances.length > 0 ? 'Total including cash' : 'Total')}
                 </TableCell>
-                <TableCell className="text-right font-semibold tabular-nums">
+                <TableCell className={cn('text-right font-semibold tabular-nums', lastPad(!showMarket && !showAdd))}>
                   {formatWhole(totalCostBasis, currency)}
                 </TableCell>
                 {showMarket ? <TableCell /> : null}
@@ -447,7 +461,7 @@ export function HoldingsTable({
                   </TableCell>
                 ) : null}
                 {unrealisedTotal ? (
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className={cn('text-right tabular-nums', lastPad(!showAdd))}>
                     {unrealisedTotal.priced > 0 ? (
                       <span className={cn('font-semibold', pnlClass(unrealisedTotal.gain))}>
                         {formatWhole(unrealisedTotal.gain, currency)}
@@ -462,16 +476,7 @@ export function HoldingsTable({
                     ) : null}
                   </TableCell>
                 ) : null}
-                <TableCell
-                  className={cn(
-                    'pr-6 text-right font-semibold tabular-nums',
-                    totalRealized >= 0
-                      ? 'text-emerald-600 dark:text-emerald-400'
-                      : 'text-rose-600 dark:text-rose-400',
-                  )}
-                >
-                  {formatWhole(totalRealized, currency)}
-                </TableCell>
+                {showAdd ? <TableCell className="pr-6" /> : null}
               </TableRow>
             </TableFooter>
           ) : null}
@@ -494,7 +499,6 @@ export function HoldingsTotal({ holdings, cashBalances, currency, prices, title 
   const unrealisedTotal = prices ? totalUnrealised(holdings, prices) : null;
   const totalCash = cashBalances.reduce((sum, cash) => sum + cash.balance, 0);
   const totalCostBasis = holdings.reduce((sum, holding) => sum + holding.costBasis, 0) + totalCash;
-  const totalRealized = holdings.reduce((sum, holding) => sum + holding.realizedPnl, 0);
   const valueTotal = unrealisedTotal ? currentValueTotal(holdings, unrealisedTotal, totalCash) : null;
   const dayTotal = prices ? totalDayChange(holdings, prices) : null;
 
@@ -505,7 +509,7 @@ export function HoldingsTotal({ holdings, cashBalances, currency, prices, title 
           <CardTitle className="text-base">{title}</CardTitle>
           <Badge variant="secondary">{holdings.length}</Badge>
         </div>
-        <dl className={cn('grid grid-cols-1 gap-4 sm:gap-8', valueTotal ? 'min-[420px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-5' : 'min-[420px]:grid-cols-3')}>
+        <dl className={cn('grid grid-cols-1 gap-4 sm:gap-8', valueTotal ? 'min-[420px]:grid-cols-2 lg:grid-cols-4' : undefined)}>
           <div className="sm:text-right">
             <dt className="text-xs text-muted-foreground">{cashBalances.length > 0 ? 'Cost basis incl. cash' : 'Cost basis'}</dt>
             <dd className="mt-1 font-semibold tabular-nums">{formatWhole(totalCostBasis, currency)}</dd>
@@ -556,12 +560,6 @@ export function HoldingsTotal({ holdings, cashBalances, currency, prices, title 
               </dd>
             </div>
           ) : null}
-          <div className="sm:text-right">
-            <dt className="text-xs text-muted-foreground">Realised P&L</dt>
-            <dd className={cn('mt-1 font-semibold tabular-nums', pnlClass(totalRealized))}>
-              {formatWhole(totalRealized, currency)}
-            </dd>
-          </div>
         </dl>
       </CardContent>
     </Card>

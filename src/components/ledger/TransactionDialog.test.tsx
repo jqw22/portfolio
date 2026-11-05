@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 
-import { TransactionDialog } from '@/components/ledger/TransactionDialog';
+import { TransactionDialog, type TradePrefill } from '@/components/ledger/TransactionDialog';
 import { makeCashMovement, makeTransaction, type CashMovement, type Transaction } from '@/lib/portfolio';
 
 const held: Transaction[] = [
@@ -11,7 +11,11 @@ const funded: CashMovement[] = [
   makeCashMovement({ date: '2024-01-01', type: 'deposit', amount: 1500, account: 'ISA' }, 'dep-1'),
 ];
 
-function renderDialog({ onSubmit = vi.fn(), onSubmitCash = vi.fn() } = {}) {
+function renderDialog({
+  onSubmit = vi.fn(),
+  onSubmitCash = vi.fn(),
+  prefill = null as TradePrefill | null,
+} = {}) {
   render(
     <TransactionDialog
       open
@@ -27,6 +31,7 @@ function renderDialog({ onSubmit = vi.fn(), onSubmitCash = vi.fn() } = {}) {
       onDeleteLabel={() => {}}
       onSubmit={onSubmit}
       onSubmitCash={onSubmitCash}
+      prefill={prefill}
     />,
   );
   return { onSubmit, onSubmitCash };
@@ -51,6 +56,22 @@ function fillTrade(type: 'Buy' | 'Sell', quantity: string, price = '120') {
 }
 
 describe('TransactionDialog', () => {
+  it('starts a new trade from a holdings row with its account and stock filled in', () => {
+    const { onSubmit } = renderDialog({ prefill: { symbol: 'AAPL', name: 'Apple Inc.', account: 'ISA' } });
+
+    expect(screen.getByLabelText('Symbol')).toHaveValue('AAPL');
+    expect(screen.getByLabelText('Stock name')).toHaveValue('Apple Inc.');
+    fireEvent.click(screen.getByRole('button', { name: 'Sell' }));
+    fireEvent.change(screen.getByLabelText('Trade date'), { target: { value: '2024-02-01' } });
+    fireEvent.change(screen.getByLabelText('Quantity'), { target: { value: '4' } });
+    fireEvent.change(screen.getByLabelText(/Price/), { target: { value: '120' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add transaction' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'sell', symbol: 'AAPL', name: 'Apple Inc.', account: 'ISA', quantity: 4 }),
+    );
+  });
+
   it('rejects a sell of more shares than are held', () => {
     const { onSubmit } = renderDialog();
     fillTrade('Sell', '15');
