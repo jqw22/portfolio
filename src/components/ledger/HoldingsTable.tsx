@@ -237,10 +237,15 @@ export function HoldingsTable({
       </CardHeader>
       <CardContent className="px-0">
         {/* Fixed layout keeps columns lined up when several of these tables are stacked. */}
-        <Table className={cn('table-fixed', showMarket ? 'min-w-[68rem]' : 'min-w-[48rem]')}>
+        <Table
+          className={cn(
+            'table-fixed',
+            showMarket ? (showAccount ? 'min-w-[74rem]' : 'min-w-[68rem]') : showAccount ? 'min-w-[54rem]' : 'min-w-[48rem]',
+          )}
+        >
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              {showAccount ? <TableHead className="w-36 pl-6">Account</TableHead> : null}
+              {showAccount ? <TableHead className="w-28 pl-6">Account</TableHead> : null}
               {/* Stock and label get fixed widths; the number columns split the rest evenly (the last is wider by its padding). */}
               <SortableHead
                 label="Stock"
@@ -274,7 +279,7 @@ export function HoldingsTable({
                   {showAccount ? (
                     <TableCell className="pl-6">
                       {holding.account ? (
-                        <span className="block max-w-[10rem] truncate font-medium">{holding.account}</span>
+                        <span className="block max-w-[6rem] truncate font-medium">{holding.account}</span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
@@ -389,7 +394,7 @@ export function HoldingsTable({
                 {showAccount ? (
                   <TableCell className="pl-6">
                     {cash.account ? (
-                      <span className="block max-w-[10rem] truncate font-medium">{cash.account}</span>
+                      <span className="block max-w-[6rem] truncate font-medium">{cash.account}</span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}

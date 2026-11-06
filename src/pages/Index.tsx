@@ -17,7 +17,9 @@ import { TransactionDialog, type TradePrefill } from '@/components/ledger/Transa
 import { TotalValueChart } from '@/components/ledger/TotalValueChart';
 import { TransactionsTable } from '@/components/ledger/TransactionsTable';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
 import { ToastAction } from '@/components/ui/toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAccountSnapshots } from '@/hooks/useAccountSnapshots';
@@ -146,6 +148,8 @@ export default function Index() {
   const [currency, setCurrency] = useLocalStorage('stock-ledger:currency', DEFAULT_CURRENCY);
   const [storedSort, setHoldingSort] = useLocalStorage<HoldingSort>('stock-ledger:holdings-sort', DEFAULT_HOLDING_SORT);
   const holdingSort = isHoldingSort(storedSort) ? storedSort : DEFAULT_HOLDING_SORT;
+  const [storedGrouped, setGroupByAccount] = useLocalStorage<boolean>('stock-ledger:holdings-grouped', true);
+  const groupHoldings = storedGrouped !== false;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [editingCash, setEditingCash] = useState<CashMovement | null>(null);
@@ -476,11 +480,24 @@ export default function Index() {
                           Open positions
                         </h2>
                         <p className="text-sm text-muted-foreground">
-                          Grouped by account. Cost basis is calculated with the average-cost method.
+                          {groupHoldings
+                            ? 'Grouped by account. '
+                            : 'All accounts in one table; a stock held in more than one account has a row for each. '}
+                          Cost basis is calculated with the average-cost method.
                           Cash is what each account holds after deposits, withdrawals, buys and sells.
                         </p>
                       </div>
-                      <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2">
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            id="group-by-account"
+                            checked={groupHoldings}
+                            onCheckedChange={(checked) => setGroupByAccount(checked)}
+                          />
+                          <Label htmlFor="group-by-account" className="text-sm font-normal">
+                            Group by account
+                          </Label>
+                        </div>
                         {lastRefreshAt > 0 ? (
                           <span className="text-xs text-muted-foreground" title={new Date(lastRefreshAt).toLocaleString()}>
                             Prices fetched{' '}
@@ -498,16 +515,46 @@ export default function Index() {
                         </Button>
                       </div>
                     </div>
-                    {accountPositions.map((group) => (
+                    {groupHoldings ? (
+                      <>
+                        {accountPositions.map((group) => (
+                          <HoldingsTable
+                            key={group.key}
+                            holdings={group.holdings}
+                            currency={currency}
+                            title={group.account ?? 'No account'}
+                            cashBalances={group.cash}
+                            prices={prices}
+                            showAccount={false}
+                            footerLabel="Subtotal"
+                            showFooter
+                            sort={holdingSort}
+                            onSortChange={setHoldingSort}
+                            stockNotes={stockNotes}
+                            onNoteChange={setStockNote}
+                            quoteUrlFor={quoteUrlFor}
+                            onAddTransaction={openAddFor}
+                          />
+                        ))}
+                        {accountPositions.length > 1 ? (
+                          <HoldingsTotal
+                            title="All accounts"
+                            holdings={portfolio.openHoldings}
+                            cashBalances={cashBalances}
+                            currency={currency}
+                            prices={prices}
+                          />
+                        ) : null}
+                      </>
+                    ) : (
                       <HoldingsTable
-                        key={group.key}
-                        holdings={group.holdings}
+                        holdings={portfolio.openHoldings}
                         currency={currency}
-                        title={group.account ?? 'No account'}
-                        cashBalances={group.cash}
+                        title="All accounts"
+                        cashBalances={cashBalances}
                         prices={prices}
-                        showAccount={false}
-                        footerLabel="Subtotal"
+                        showAccount
+                        footerLabel="Total"
                         showFooter
                         sort={holdingSort}
                         onSortChange={setHoldingSort}
@@ -516,16 +563,7 @@ export default function Index() {
                         quoteUrlFor={quoteUrlFor}
                         onAddTransaction={openAddFor}
                       />
-                    ))}
-                    {accountPositions.length > 1 ? (
-                      <HoldingsTotal
-                        title="All accounts"
-                        holdings={portfolio.openHoldings}
-                        cashBalances={cashBalances}
-                        currency={currency}
-                        prices={prices}
-                      />
-                    ) : null}
+                    )}
                   </section>
                 </TabsContent>
 
