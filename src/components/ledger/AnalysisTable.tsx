@@ -8,8 +8,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import type { GroupSummary, GroupSummaryTable } from '@/lib/analysis';
-import { formatWhole } from '@/lib/portfolio';
+import { dayChangePercentOf, type GroupSummary, type GroupSummaryTable } from '@/lib/analysis';
+import { formatPercent, formatWhole } from '@/lib/portfolio';
 import { cn } from '@/lib/utils';
 
 interface AnalysisTableProps {
@@ -50,10 +50,21 @@ function SummaryCells({
   showCash: boolean;
 }) {
   const weight = isTotal ? 'font-semibold' : 'font-medium';
+  const dayPercent = dayChangePercentOf(row);
   return (
     <>
       <TableCell className="text-right tabular-nums">{row.isCash ? '—' : row.positions}</TableCell>
       <TableCell className={cn('text-right tabular-nums', weight)}>{formatWhole(row.costBasis, currency)}</TableCell>
+      <TableCell className="text-right tabular-nums">
+        {dayPercent !== null ? (
+          <div className={pnlClass(row.dayChange)}>
+            <span className={weight}>{formatWhole(row.dayChange, currency)}</span>
+            <p className="mt-0.5 text-xs font-normal">{formatPercent(dayPercent, 1)}</p>
+          </div>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </TableCell>
       <TableCell className="text-right tabular-nums">
         <span className={weight}>{formatWhole(row.currentValue, currency)}</span>
         {row.unpriced > 0 ? (
@@ -90,12 +101,13 @@ export function AnalysisTable({ title, description, groupHeading, unnamedLabel, 
         </div>
       </CardHeader>
       <CardContent className="px-0">
-        <Table className="min-w-[52rem] table-fixed">
+        <Table className="min-w-[60rem] table-fixed">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="w-48 pl-6">{groupHeading}</TableHead>
               <TableHead className="w-24 text-right">Positions</TableHead>
               <TableHead className="text-right">Cost basis</TableHead>
+              <TableHead className="text-right">Day change</TableHead>
               <TableHead className="text-right">Current value</TableHead>
               {showCash ? <TableHead className="text-right">Cash</TableHead> : null}
               <TableHead className={cn('text-right', !showShare && 'pr-6')}>Unrealised</TableHead>
