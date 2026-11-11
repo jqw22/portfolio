@@ -6,7 +6,7 @@
 
 import type { CashBalance } from './cash';
 import { positionKey, sortByDate, type Holding, type Transaction } from './portfolio';
-import { unrealisedGain, type ResolvedPrice } from './prices';
+import { dayChangeValue, unrealisedGain, type ResolvedPrice } from './prices';
 
 const EPSILON = 1e-9;
 
@@ -28,6 +28,12 @@ export interface GroupSummary {
   priced: number;
   /** Open positions without a price, counted at cost. */
   unpriced: number;
+  /** Today's change across the open positions that have one. */
+  dayChange: number;
+  /** Those positions' value at the previous close, for the day change percentage. */
+  previousValue: number;
+  /** Open positions with a day change. */
+  dayPriced: number;
   cash: number;
   /** Share of the total current value, 0 to 1. */
   share: number;
@@ -50,6 +56,9 @@ function emptyGroup(key: string, name?: string): GroupSummary {
     unrealised: 0,
     priced: 0,
     unpriced: 0,
+    dayChange: 0,
+    previousValue: 0,
+    dayPriced: 0,
     cash: 0,
     share: 0,
   };
@@ -59,7 +68,14 @@ function addHolding(group: GroupSummary, holding: Holding, prices: Prices): void
   if (holding.quantity <= EPSILON) return;
   group.positions += 1;
   group.costBasis += holding.costBasis;
-  const result = unrealisedGain(holding, prices[holding.symbol]?.price);
+  const price = prices[holding.symbol];
+  const day = dayChangeValue(holding, price);
+  if (day !== null && price?.price) {
+    group.dayPriced += 1;
+    group.dayChange += day;
+    group.previousValue += price.price * holding.quantity - day;
+  }
+  const result = unrealisedGain(holding, price?.price);
   if (result) {
     group.priced += 1;
     group.unrealised += result.gain;
@@ -76,6 +92,11 @@ function addCash(group: GroupSummary, balance: number): void {
   group.currentValue += balance;
 }
 
+/** Today's change as a percentage of the previous close, or `null` when no position has one. */
+export function dayChangePercentOf(group: GroupSummary): number | null {
+  return group.dayPriced > 0 && group.previousValue > EPSILON ? (group.dayChange / group.previousValue) * 100 : null;
+}
+
 /** Add the total row and each row's share of the total current value. */
 function finish(rows: GroupSummary[]): GroupSummaryTable {
   const total = emptyGroup('total');
@@ -86,6 +107,9 @@ function finish(rows: GroupSummary[]): GroupSummaryTable {
     total.unrealised += row.unrealised;
     total.priced += row.priced;
     total.unpriced += row.unpriced;
+    total.dayChange += row.dayChange;
+    total.previousValue += row.previousValue;
+    total.dayPriced += row.dayPriced;
     total.cash += row.cash;
   }
   const denominator = Math.abs(total.currentValue) > EPSILON ? total.currentValue : 0;
