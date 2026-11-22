@@ -1,7 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { dayChangePercentOf, type GroupSummary, type GroupSummaryTable } from '@/lib/analysis';
-import { formatPercent, formatWhole } from '@/lib/portfolio';
+/** A whole amount with thousands separators and no currency symbol, e.g. `12,345` or `-49`. */
+function formatAmount(value: number): string {
+  const safe = Number.isFinite(value) ? Math.round(value) : 0;
+  return new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 }).format(safe === 0 ? 0 : safe);
+}
 
 /** Printable area of an A4 portrait page with 12mm margins, in CSS pixels. */
 const MM = 96 / 25.4;
@@ -13,7 +17,6 @@ interface PrintTableProps {
   groupHeading: string;
   unnamedLabel: string;
   summary: GroupSummaryTable;
-  currency: string;
   showCash?: boolean;
   showShare?: boolean;
 }
@@ -23,35 +26,29 @@ function signClass(value: number): string {
   return value > 0 ? 'gain' : 'loss';
 }
 
-function Cells({ row, currency, showCash, showShare }: { row: GroupSummary; currency: string; showCash: boolean; showShare: boolean }) {
+function Cells({ row, showCash, showShare }: { row: GroupSummary; showCash: boolean; showShare: boolean }) {
   const dayPercent = dayChangePercentOf(row);
   return (
     <>
       <td className="num">{row.isCash ? '—' : row.positions}</td>
-      <td className="num">{formatWhole(row.costBasis, currency)}</td>
+      <td className="num">{formatAmount(row.costBasis)}</td>
       <td className={`num ${dayPercent !== null ? signClass(row.dayChange) : ''}`}>
-        {dayPercent !== null ? (
-          <>
-            {formatWhole(row.dayChange, currency)} <span className="sub">{formatPercent(dayPercent, 1)}</span>
-          </>
-        ) : (
-          '—'
-        )}
+        {dayPercent !== null ? formatAmount(row.dayChange) : '—'}
       </td>
       <td className="num">
-        {formatWhole(row.currentValue, currency)}
+        {formatAmount(row.currentValue)}
         {row.unpriced > 0 ? <span className="sub"> ({row.unpriced} at cost)</span> : null}
       </td>
-      {showCash ? <td className="num">{formatWhole(row.cash, currency)}</td> : null}
+      {showCash ? <td className="num">{formatAmount(row.cash)}</td> : null}
       <td className={`num ${row.priced > 0 ? signClass(row.unrealised) : ''}`}>
-        {row.priced > 0 ? formatWhole(row.unrealised, currency) : '—'}
+        {row.priced > 0 ? formatAmount(row.unrealised) : '—'}
       </td>
       {showShare ? <td className="num">{`${(row.share * 100).toFixed(1)}%`}</td> : null}
     </>
   );
 }
 
-function PrintTable({ title, groupHeading, unnamedLabel, summary, currency, showCash = false, showShare = false }: PrintTableProps) {
+function PrintTable({ title, groupHeading, unnamedLabel, summary, showCash = false, showShare = false }: PrintTableProps) {
   return (
     <section>
       <h2>{title}</h2>
@@ -72,14 +69,14 @@ function PrintTable({ title, groupHeading, unnamedLabel, summary, currency, show
           {summary.rows.map((row) => (
             <tr key={row.key} className={row.isCash ? 'cash' : undefined}>
               <td className="name">{row.name ?? <span className="muted">{unnamedLabel}</span>}</td>
-              <Cells row={row} currency={currency} showCash={showCash} showShare={showShare} />
+              <Cells row={row} showCash={showCash} showShare={showShare} />
             </tr>
           ))}
         </tbody>
         <tfoot>
           <tr>
             <td className="name">Total</td>
-            <Cells row={summary.total} currency={currency} showCash={showCash} showShare={showShare} />
+            <Cells row={summary.total} showCash={showCash} showShare={showShare} />
           </tr>
         </tfoot>
       </table>
@@ -148,6 +145,7 @@ export function AnalysisPrintSheet({ accountSummary, labelSummary, currency, pri
       <header>
         <h1>Portfolio summary</h1>
         <p>
+          {`Amounts in ${currency} · `}
           {now.toLocaleString('en-GB', DATE_TIME)}
           {pricesFetchedAt > 0 ? ` · Prices fetched ${new Date(pricesFetchedAt).toLocaleString('en-GB', DATE_TIME)}` : ''}
         </p>
@@ -157,7 +155,6 @@ export function AnalysisPrintSheet({ accountSummary, labelSummary, currency, pri
         groupHeading="Account"
         unnamedLabel="No account"
         summary={accountSummary}
-        currency={currency}
         showCash
       />
       <PrintTable
@@ -165,7 +162,6 @@ export function AnalysisPrintSheet({ accountSummary, labelSummary, currency, pri
         groupHeading="Label"
         unnamedLabel="Unlabelled"
         summary={labelSummary}
-        currency={currency}
         showShare
       />
       <p className="note">

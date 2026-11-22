@@ -57,10 +57,14 @@ function SummaryCells({
       <TableCell className={cn('text-right tabular-nums', weight)}>{formatWhole(row.costBasis, currency)}</TableCell>
       <TableCell className="text-right tabular-nums">
         {dayPercent !== null ? (
-          <div className={pnlClass(row.dayChange)}>
-            <span className={weight}>{formatWhole(row.dayChange, currency)}</span>
-            <p className="mt-0.5 text-xs font-normal">{formatPercent(dayPercent, 1)}</p>
-          </div>
+          <span className={cn(weight, pnlClass(row.dayChange))}>{formatWhole(row.dayChange, currency)}</span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </TableCell>
+      <TableCell className="text-right tabular-nums">
+        {dayPercent !== null ? (
+          <span className={pnlClass(row.dayChange)}>{formatPercent(dayPercent, 1)}</span>
         ) : (
           <span className="text-muted-foreground">—</span>
         )}
@@ -108,6 +112,7 @@ export function AnalysisTable({ title, description, groupHeading, unnamedLabel, 
               <TableHead className="w-24 text-right">Positions</TableHead>
               <TableHead className="text-right">Cost basis</TableHead>
               <TableHead className="text-right">Day change</TableHead>
+              <TableHead className="w-20 text-right">%</TableHead>
               <TableHead className="text-right">Current value</TableHead>
               {showCash ? <TableHead className="text-right">Cash</TableHead> : null}
               <TableHead className={cn('text-right', !showShare && 'pr-6')}>Unrealised</TableHead>
