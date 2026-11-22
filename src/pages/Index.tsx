@@ -17,6 +17,7 @@ import { SummaryCards } from '@/components/ledger/SummaryCards';
 import { TransactionDialog, type TradePrefill } from '@/components/ledger/TransactionDialog';
 import { TotalValueChart } from '@/components/ledger/TotalValueChart';
 import { TransactionsTable } from '@/components/ledger/TransactionsTable';
+import { WatchlistTable } from '@/components/ledger/WatchlistTable';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -47,6 +48,7 @@ import {
   type HoldingSort,
   type Transaction,
   type TransactionInput,
+  type WatchItem,
 } from '@/lib/portfolio';
 import { sampleLedger } from '@/lib/sampleData';
 import { yahooQuoteUrl } from '@/lib/prices';
@@ -142,6 +144,9 @@ export default function Index() {
     deleteAccount,
     stockNotes,
     setStockNote,
+    watchlist,
+    addWatch,
+    removeWatch,
     refresh,
   } = useStockTransactions();
   const { toast } = useToast();
@@ -178,6 +183,20 @@ export default function Index() {
     () => Array.from(new Set(portfolio.openHoldings.map((holding) => holding.symbol))).sort(),
     [portfolio.openHoldings],
   );
+  // Held and watched stocks share one price fetch.
+  const priceSymbols = useMemo(
+    () => Array.from(new Set([...openSymbols, ...watchlist.map((item) => item.symbol)])).sort(),
+    [openSymbols, watchlist],
+  );
+  const heldSymbols = useMemo(() => new Set(openSymbols), [openSymbols]);
+  const knownNames = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const tx of sortByDate(transactions)) {
+      const name = tx.name?.trim();
+      if (name) names.set(tx.symbol, name);
+    }
+    return names;
+  }, [transactions]);
   const {
     prices,
     settings: priceSettings,
@@ -188,7 +207,7 @@ export default function Index() {
     isRefreshing,
     refresh: refreshPrices,
     fetchOne: fetchPrice,
-  } = usePrices(openSymbols, currency);
+  } = usePrices(priceSymbols, currency);
   const quoteUrlFor = useCallback((symbol: string) => yahooQuoteUrl(symbol, priceSettings), [priceSettings]);
   const accountSummary = useMemo(
     () => summariseByAccount(portfolio.holdings, cashBalances, prices),
@@ -214,7 +233,7 @@ export default function Index() {
   /** Pull the ledger from relays (when signed in) and fetch the latest prices. */
   const handleRefresh = async () => {
     if (isLoggedIn) refresh();
-    if (openSymbols.length === 0) return;
+    if (priceSymbols.length === 0) return;
     const result = await refreshPrices();
     // Without a key only exchange rates are fetched; that's not worth a toast.
     if (!hasKey && !result.fxFailed) return;
@@ -265,6 +284,27 @@ export default function Index() {
       title: 'Price settings saved',
       description:
         keysChanged && (next.relayUrl || next.alphaVantageKey || next.finnhubKey) ? 'Press Refresh to fetch prices.' : undefined,
+    });
+  };
+
+  const handleAddWatch = (symbol: string, name?: string) => {
+    addWatch(symbol, name);
+    const quoted = Boolean(prices[symbol]);
+    toast({
+      title: `${name ?? symbol} added to your watchlist`,
+      description: quoted ? undefined : 'Press Refresh to fetch its price.',
+    });
+  };
+
+  const handleRemoveWatch = (item: WatchItem) => {
+    removeWatch(item.symbol);
+    toast({
+      title: `${item.name ?? item.symbol} removed from your watchlist`,
+      action: (
+        <ToastAction altText="Put it back on the watchlist" onClick={() => addWatch(item.symbol, item.name)}>
+          Undo
+        </ToastAction>
+      ),
     });
   };
 
@@ -405,7 +445,7 @@ export default function Index() {
         canSync={canSync}
       >
         <DataMenu
-          ledger={{ transactions, cash, labels, accounts: savedAccounts, stockNotes }}
+          ledger={{ transactions, cash, labels, accounts: savedAccounts, stockNotes, watchlist }}
           onRequestImport={() => fileInputRef.current?.click()}
           onLoadSample={handleLoadSample}
           onReset={() => {
@@ -473,6 +513,7 @@ export default function Index() {
                   <TabsTrigger value="holdings">Holdings</TabsTrigger>
                   <TabsTrigger value="analysis">Summary</TabsTrigger>
                   <TabsTrigger value="transactions">Transactions</TabsTrigger>
+                  <TabsTrigger value="watchlist">Watchlist</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="holdings" className="mt-4 space-y-6">
@@ -583,6 +624,21 @@ export default function Index() {
                   />
                 </TabsContent>
 
+                <TabsContent value="watchlist" className="mt-4">
+                  <WatchlistTable
+                    items={watchlist}
+                    currency={currency}
+                    prices={prices}
+                    heldSymbols={heldSymbols}
+                    knownNames={knownNames}
+                    stockNotes={stockNotes}
+                    onNoteChange={setStockNote}
+                    quoteUrlFor={quoteUrlFor}
+                    onAdd={handleAddWatch}
+                    onRemove={handleRemoveWatch}
+                  />
+                </TabsContent>
+
                 <TabsContent value="analysis" className="mt-4 space-y-6">
                   <div className="flex justify-end">
                     <Button
@@ -661,7 +717,7 @@ export default function Index() {
       <PricesDialog
         open={pricesOpen}
         onOpenChange={setPricesOpen}
-        symbols={openSymbols}
+        symbols={priceSymbols}
         settings={priceSettings}
         quotes={quotes}
         onSave={handleSavePrices}

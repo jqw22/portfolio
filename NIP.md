@@ -45,7 +45,7 @@ const plaintext = await user.signer.nip44.decrypt(user.pubkey, event.content);
 ### Write / update
 
 ```ts
-const payload = { version: 5, transactions, cash, labels, accounts, stockNotes };
+const payload = { version: 6, transactions, cash, labels, accounts, stockNotes, watchlist };
 const ciphertext = await user.signer.nip44.encrypt(user.pubkey, JSON.stringify(payload));
 await createEvent({
   kind: 30078,
@@ -61,16 +61,20 @@ revisions never tie.
 ## Decrypted payload schema
 
 `content` decrypts to a JSON object holding the trades, the cash movements, the
-user's lists of labels and accounts, and their notes on individual stocks:
+user's lists of labels and accounts, their notes on individual stocks and the
+stocks they are watching:
 
 ```jsonc
 {
-  "version": 5,
+  "version": 6,
   "labels": ["Long term", "Dividend"], // user-defined labels, in creation order
   "accounts": ["ISA", "General"],      // accounts trades are made in, in creation order
   "stockNotes": {                      // one free-text note per stock, shared by every account
     "AAPL": "Long-term hold. Review after results."
   },
+  "watchlist": [                       // stocks being watched, owned or not, in the order added
+    { "symbol": "VOD.L", "name": "Vodafone Group", "addedOn": "2026-11-22" } // name optional
+  ],
   "transactions": [
     {
       "id": "0f1e2d3c-…",   // opaque client-generated identifier
@@ -122,9 +126,14 @@ Stock notes are keyed by the upper-cased symbol, as used on transactions. A note
 is trimmed and at most 2000 characters; blank notes are not stored. Notes are
 kept when a stock is sold out of, and resetting the ledger deletes them.
 
+Watchlist symbols are upper-cased tickers, as used on transactions, and appear at
+most once; `addedOn` is a YYYY-MM-DD date. Readers drop entries without a symbol
+and later repeats of a symbol. Resetting the ledger empties the watchlist.
+
 ### Older versions
 
-Version 4 is the same object without `stockNotes`; readers treat a missing
+Version 5 is the same object without `watchlist`; readers treat a missing
+`watchlist` as `[]`. Version 4 is the same object without `stockNotes`; readers treat a missing
 `stockNotes` as `{}`. Version 3 is the same object without `cash`; readers treat a missing `cash` as
 `[]`. Version 2 also lacks `accounts`, read as `[]`.
 
@@ -135,7 +144,7 @@ transaction objects (the `transactions` array above, without `label` or
 `account`). Readers must still accept this form and treat it as
 `{ "labels": [], "accounts": [], "cash": [], "transactions": <array> }`.
 
-The next write upgrades any older revision to version 5.
+The next write upgrades any older revision to version 6.
 
 ## Derived values (not stored)
 
