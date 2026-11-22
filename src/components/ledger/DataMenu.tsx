@@ -27,7 +27,7 @@ interface DataMenuProps {
   ledger: Ledger;
   onRequestImport: () => void;
   onLoadSample: () => void;
-  /** Delete every transaction, cash movement, label, account and stock note. */
+  /** Delete every transaction, cash movement, label, account, stock note and watched stock. */
   onReset: () => void;
 }
 
@@ -51,10 +51,10 @@ export function DataMenu({ ledger, onRequestImport, onLoadSample, onReset }: Dat
   const { toast } = useToast();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const { transactions, cash, labels, accounts, stockNotes } = ledger;
+  const { transactions, cash, labels, accounts, stockNotes, watchlist } = ledger;
   const noteCount = Object.keys(stockNotes).length;
   const entryCount = transactions.length + cash.length;
-  const isEmpty = entryCount === 0 && labels.length === 0 && accounts.length === 0 && noteCount === 0;
+  const isEmpty = entryCount === 0 && labels.length === 0 && accounts.length === 0 && noteCount === 0 && watchlist.length === 0;
 
   const handleExportCsv = () => {
     downloadFile(`stock-ledger-${todayIso()}.csv`, transactionsToCsv(transactions, cash), 'text/csv;charset=utf-8');
@@ -131,8 +131,8 @@ export function DataMenu({ ledger, onRequestImport, onLoadSample, onReset }: Dat
             <AlertDialogDescription>
               This permanently deletes {pluralize(transactions.length, 'trade')},{' '}
               {pluralize(cash.length, 'deposit or withdrawal', 'deposits and withdrawals')},{' '}
-              {pluralize(labels.length, 'label')}, {pluralize(accounts.length, 'account')} and{' '}
-              {pluralize(noteCount, 'stock note')}, here and on your
+              {pluralize(labels.length, 'label')}, {pluralize(accounts.length, 'account')},{' '}
+              {pluralize(noteCount, 'stock note')} and {pluralize(watchlist.length, 'watched stock')}, here and on your
               relays. Export a backup first if you want to keep them.
             </AlertDialogDescription>
           </AlertDialogHeader>

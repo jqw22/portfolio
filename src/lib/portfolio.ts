@@ -81,6 +81,18 @@ export interface Ledger {
   accounts: string[];
   /** A free-text note per stock, keyed by upper-cased symbol and shared by every account. */
   stockNotes: Record<string, string>;
+  /** Stocks the user is watching but may not own, in the order they were added. */
+  watchlist: WatchItem[];
+}
+
+/** A stock on the watchlist. */
+export interface WatchItem {
+  /** Upper-cased ticker, as used on transactions. */
+  symbol: string;
+  /** Display name, e.g. "Apple Inc.". */
+  name?: string;
+  /** YYYY-MM-DD the stock was added. */
+  addedOn: string;
 }
 
 /**
@@ -272,6 +284,47 @@ export function parseStockNotes(value: unknown): Record<string, string> {
     if (symbol && note) result[symbol] = note;
   }
   return result;
+}
+
+/** Longest watchlist stock name kept, in characters. */
+const WATCH_NAME_MAX_LENGTH = 120;
+
+/** Coerce a stored watchlist into clean items, dropping malformed entries and repeated symbols. */
+export function parseWatchlist(value: unknown): WatchItem[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: WatchItem[] = [];
+  for (const raw of value) {
+    if (typeof raw !== 'object' || raw === null) continue;
+    const record = raw as Record<string, unknown>;
+    const symbol = typeof record.symbol === 'string' ? record.symbol.trim().toUpperCase() : '';
+    if (!symbol || seen.has(symbol)) continue;
+    seen.add(symbol);
+    const name = typeof record.name === 'string' ? record.name.trim().slice(0, WATCH_NAME_MAX_LENGTH).trim() : '';
+    const addedOn = (typeof record.addedOn === 'string' ? normalizeDate(record.addedOn) : null) ?? todayIso();
+    result.push({ symbol, name: name || undefined, addedOn });
+  }
+  return result;
+}
+
+/** Add a stock to the watchlist; a symbol already on it gets the new name instead. */
+export function addToWatchlist(ledger: Ledger, symbol: string, name?: string): Ledger {
+  const [item] = parseWatchlist([{ symbol, name, addedOn: todayIso() }]);
+  if (!item) return ledger;
+  const existing = ledger.watchlist.find((entry) => entry.symbol === item.symbol);
+  if (existing) {
+    return {
+      ...ledger,
+      watchlist: ledger.watchlist.map((entry) => (entry.symbol === item.symbol ? { ...entry, name: item.name ?? entry.name } : entry)),
+    };
+  }
+  return { ...ledger, watchlist: [...ledger.watchlist, item] };
+}
+
+/** Take a stock off the watchlist. */
+export function removeFromWatchlist(ledger: Ledger, symbol: string): Ledger {
+  const key = symbol.trim().toUpperCase();
+  return { ...ledger, watchlist: ledger.watchlist.filter((entry) => entry.symbol !== key) };
 }
 
 /** Set (or, with a blank note, delete) the note for a stock. */
@@ -627,6 +680,7 @@ export function parseLedger(value: unknown): Ledger {
   let rawLabels: unknown = [];
   let rawAccounts: unknown = [];
   let rawStockNotes: unknown = {};
+  let rawWatchlist: unknown = [];
   if (!Array.isArray(value) && typeof value === 'object' && value !== null) {
     const record = value as Record<string, unknown>;
     rawTransactions = record.transactions;
@@ -634,6 +688,7 @@ export function parseLedger(value: unknown): Ledger {
     rawLabels = record.labels;
     rawAccounts = record.accounts;
     rawStockNotes = record.stockNotes;
+    rawWatchlist = record.watchlist;
   }
   const parsed = parseTransactions(rawTransactions);
   const parsedCash = parseCashMovements(rawCash);
@@ -656,5 +711,12 @@ export function parseLedger(value: unknown): Ledger {
   const cash = parsedCash.map((entry) =>
     entry.account ? { ...entry, account: findLabel(accounts, entry.account) } : entry,
   );
-  return { transactions, cash, labels, accounts, stockNotes: parseStockNotes(rawStockNotes) };
+  return {
+    transactions,
+    cash,
+    labels,
+    accounts,
+    stockNotes: parseStockNotes(rawStockNotes),
+    watchlist: parseWatchlist(rawWatchlist),
+  };
 }
