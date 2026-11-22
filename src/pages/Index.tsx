@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useSeoMeta } from '@unhead/react';
-import { LineChart, Plus, RefreshCw, Wallet } from 'lucide-react';
+import { LineChart, Plus, Printer, RefreshCw, Wallet } from 'lucide-react';
 
 import { LoginArea } from '@/components/auth/LoginArea';
 import { StoredKeyNotice } from '@/components/auth/StoredKeyNotice';
 import { AccountsDialog } from '@/components/ledger/AccountsDialog';
 import { AccountValueChart } from '@/components/ledger/AccountValueChart';
+import { AnalysisPrintSheet } from '@/components/ledger/AnalysisPrintSheet';
 import { AnalysisTable } from '@/components/ledger/AnalysisTable';
 import { AppHeader } from '@/components/ledger/AppHeader';
 import { DataMenu } from '@/components/ledger/DataMenu';
@@ -383,6 +384,8 @@ export default function Index() {
   };
 
   const hasTransactions = transactions.length > 0 || cash.length > 0;
+  const [printingAnalysis, setPrintingAnalysis] = useState(false);
+  const finishPrinting = useCallback(() => setPrintingAnalysis(false), []);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -468,7 +471,7 @@ export default function Index() {
               <Tabs defaultValue="holdings" className="min-w-0">
                 <TabsList>
                   <TabsTrigger value="holdings">Holdings</TabsTrigger>
-                  <TabsTrigger value="analysis">Analysis</TabsTrigger>
+                  <TabsTrigger value="analysis">Summary</TabsTrigger>
                   <TabsTrigger value="transactions">Transactions</TabsTrigger>
                 </TabsList>
 
@@ -581,6 +584,18 @@ export default function Index() {
                 </TabsContent>
 
                 <TabsContent value="analysis" className="mt-4 space-y-6">
+                  <div className="flex justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPrintingAnalysis(true)}
+                      disabled={printingAnalysis}
+                      aria-label="Print the By account and By label tables"
+                    >
+                      <Printer />
+                      Print tables
+                    </Button>
+                  </div>
                   <TotalValueChart
                     snapshots={snapshots}
                     accounts={accounts}
@@ -612,6 +627,16 @@ export default function Index() {
           )}
         </div>
       </main>
+
+      {printingAnalysis ? (
+        <AnalysisPrintSheet
+          accountSummary={accountSummary}
+          labelSummary={labelSummary}
+          currency={currency}
+          pricesFetchedAt={lastRefreshAt}
+          onDone={finishPrinting}
+        />
+      ) : null}
 
 
       <TransactionDialog
