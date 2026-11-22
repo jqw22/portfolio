@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { usePriceHistory } from '@/hooks/usePriceHistory';
-import { formatDate, formatWhole, type Holding } from '@/lib/portfolio';
+import { formatWhole, type Holding } from '@/lib/portfolio';
 import { quoteSymbolFor, yahooSymbolFor, type PriceSettings, type ResolvedPrice } from '@/lib/prices';
 import {
   analyseRisk,
@@ -71,6 +71,12 @@ function cellStyle(value: number | null): CSSProperties {
   return { backgroundColor: `rgba(${colour}, ${strength.toFixed(2)})`, color: strength > 0.5 ? 'white' : undefined };
 }
 
+/** `YYYY-MM-DD` as `dd/mm/yy`, e.g. `20/11/26`. */
+function shortDate(iso: string): string {
+  const [year, month, day] = iso.split('-');
+  return year && month && day ? `${day}/${month}/${year.slice(2)}` : iso;
+}
+
 function shortSymbol(symbol: string): string {
   return symbol.replace(/^[A-Z]+:/, '').split('.')[0];
 }
@@ -105,10 +111,10 @@ function Stat({ label, value, hint, icon: Icon, iconClass }: StatProps) {
 function VolatilityCell({ stock }: { stock: StockRisk }) {
   if (stock.volatility === null) return <span className="text-muted-foreground">—</span>;
   return (
-    <>
-      <span className="font-medium">{percent(stock.volatility)}</span>
-      <p className="mt-0.5 text-xs text-muted-foreground">{volatilityWord(stock.volatility)}</p>
-    </>
+    <span className="whitespace-nowrap">
+      <span className="font-medium">{percent(stock.volatility)}</span>{' '}
+      <span className="text-xs text-muted-foreground">{volatilityWord(stock.volatility)}</span>
+    </span>
   );
 }
 
@@ -207,7 +213,7 @@ export function RiskAnalysis({ holdings, prices, priceSettings, currency, names 
           <h2 className="text-lg font-semibold tracking-tight">Volatility and correlation</h2>
           <p className="text-sm text-muted-foreground">
             From the last year of daily closing prices on Yahoo Finance, in {currency}. Cash isn't included.
-            {fetchedAt > 0 ? ` Prices up to ${formatDate(report.to || new Date(fetchedAt).toISOString().slice(0, 10))}.` : ''}
+            {fetchedAt > 0 ? ` Prices up to ${shortDate(report.to || new Date(fetchedAt).toISOString().slice(0, 10))}.` : ''}
           </p>
         </div>
         <Button
@@ -292,7 +298,7 @@ export function RiskAnalysis({ holdings, prices, priceSettings, currency, names 
               value={report.portfolioWorstDay ? signedPercent(report.portfolioWorstDay.change) : '—'}
               hint={
                 report.portfolioWorstDay
-                  ? `${formatDate(report.portfolioWorstDay.date)}${topRisk ? `. Most of the swings: ${topRisk.name} (${percent(topRisk.riskShare, 0)})` : ''}`
+                  ? `${shortDate(report.portfolioWorstDay.date)}${topRisk ? `. Most of the swings: ${topRisk.name} (${percent(topRisk.riskShare, 0)})` : ''}`
                   : 'Largest one-day fall in the last year'
               }
               icon={TrendingDown}
@@ -326,8 +332,10 @@ export function RiskAnalysis({ holdings, prices, priceSettings, currency, names 
                     {byVolatility.map((stock) => (
                       <TableRow key={stock.symbol}>
                         <TableCell className="pl-5">
-                          <p className="font-medium">{stock.name}</p>
-                          <p className="text-xs text-muted-foreground">{stock.symbol}</p>
+                          <span className="whitespace-nowrap">
+                            <span className="font-medium">{stock.name}</span>{' '}
+                            <span className="text-xs text-muted-foreground">{stock.symbol}</span>
+                          </span>
                         </TableCell>
                         <TableCell className="text-right tabular-nums">{formatWhole(stock.value, currency)}</TableCell>
                         <TableCell className="text-right tabular-nums">{percent(stock.weight)}</TableCell>
@@ -336,10 +344,10 @@ export function RiskAnalysis({ holdings, prices, priceSettings, currency, names 
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
                           {stock.worstDay ? (
-                            <>
-                              <span className="text-rose-600 dark:text-rose-400">{signedPercent(stock.worstDay.change)}</span>
-                              <p className="mt-0.5 text-xs text-muted-foreground">{formatDate(stock.worstDay.date)}</p>
-                            </>
+                            <span className="whitespace-nowrap">
+                              <span className="text-rose-600 dark:text-rose-400">{signedPercent(stock.worstDay.change)}</span>{' '}
+                              <span className="text-xs text-muted-foreground">{shortDate(stock.worstDay.date)}</span>
+                            </span>
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}
