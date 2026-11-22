@@ -21,11 +21,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Single deploy job
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  # Build and upload in one job, deploy in another. With both in one job,
+  # deploy-pages sometimes looked up the artifact a moment after upload and
+  # found none ("No artifacts named github-pages"); a separate job only starts
+  # once the upload is fully registered.
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -51,6 +51,13 @@ jobs:
         with:
           path: dist
 
+  deploy:
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
