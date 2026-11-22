@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import relay, { parseChart } from './price-relay.js';
+import relay, { parseChart, parseHistory } from './price-relay.js';
 
 function chart(price, currency = 'GBp') {
   return { chart: { result: [{ meta: { regularMarketPrice: price, currency, regularMarketTime: 1790000000 } }], error: null } };
@@ -111,5 +111,58 @@ describe('relay', () => {
     expect((await ask('symbols=')).status).toBe(400);
     const body = await (await ask('symbols=BAD%20SYMBOL')).json();
     expect(body.errors['BAD SYMBOL']).toBe('Not a valid symbol.');
+  });
+
+  it('returns price history when asked with history=', async () => {
+    vi.stubGlobal('caches', { default: memoryCache() });
+    const fetchMock = vi.fn(async () => Response.json(historyChart()));
+    vi.stubGlobal('fetch', fetchMock);
+    const body = await (await ask('history=vod.l')).json();
+    expect(body).toEqual({ history: { 'VOD.L': { currency: 'GBp', dates: ['2026-11-18', '2026-11-19', '2026-11-20'], closes: [70, 71, 72.5] } }, errors: {} });
+    expect(String(fetchMock.mock.calls[0][0])).toContain('range=1y');
+    // Cached separately from latest prices.
+    await ask('history=VOD.L');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+function historyChart() {
+  const day = 86400;
+  // 18 Nov 2026 08:00 UTC, London time.
+  const start = Date.UTC(2026, 10, 18, 8) / 1000;
+  return {
+    chart: {
+      result: [
+        {
+          meta: { regularMarketPrice: 72.5, currency: 'GBp', gmtoffset: 0 },
+          timestamp: [start, start + day, start + 2 * day],
+          indicators: { quote: [{ close: [71, 72, 73.5] }], adjclose: [{ adjclose: [70, 71, 72.5] }] },
+        },
+      ],
+      error: null,
+    },
+  };
+}
+
+describe('parseHistory', () => {
+  it('reads adjusted daily closes with their dates', () => {
+    expect(parseHistory(historyChart())).toEqual({
+      currency: 'GBp',
+      dates: ['2026-11-18', '2026-11-19', '2026-11-20'],
+      closes: [70, 71, 72.5],
+    });
+  });
+
+  it('falls back to plain closes, skips gaps and keeps the last candle of a day', () => {
+    const body = historyChart();
+    const result = body.chart.result[0];
+    delete result.indicators.adjclose;
+    result.timestamp.push(result.timestamp[2] + 3600);
+    result.indicators.quote[0].close = [71, null, 73.5, 74];
+    expect(parseHistory(body)).toEqual({ currency: 'GBp', dates: ['2026-11-18', '2026-11-20'], closes: [71, 74] });
+  });
+
+  it('reports unknown symbols', () => {
+    expect(() => parseHistory({ chart: { result: null, error: { code: 'Not Found' } } })).toThrow('Symbol not found.');
   });
 });
