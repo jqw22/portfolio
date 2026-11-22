@@ -146,7 +146,7 @@ export function AnalysisPrintSheet({ accountSummary, labelSummary, currency, pri
   return createPortal(
     <div ref={sheetRef} className="analysis-print-sheet" style={{ width: PAGE_WIDTH_PX }}>
       <header>
-        <h1>Portfolio analysis</h1>
+        <h1>Portfolio summary</h1>
         <p>
           {now.toLocaleString('en-GB', DATE_TIME)}
           {pricesFetchedAt > 0 ? ` · Prices fetched ${new Date(pricesFetchedAt).toLocaleString('en-GB', DATE_TIME)}` : ''}
