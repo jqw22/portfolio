@@ -41,3 +41,8 @@ tab. You should see a price for each symbol.
   leaves the previous close out (it does for some symbols), the relay works it
   out from the last few days' closing prices; that needs the relay from
   27 Oct 2026 or later.
+- The relay also passes on about a year of daily closing prices
+  (`?history=VOD.L,AAPL`), which the Analysis tab uses for volatility and
+  correlation. A relay deployed before 22 Nov 2026 doesn't know this request;
+  the Analysis tab says so until you paste in the latest `price-relay.js` and
+  deploy again. Histories are cached for 6 hours.

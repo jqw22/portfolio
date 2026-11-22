@@ -390,3 +390,19 @@ describe('yahooQuoteUrl', () => {
     expect(yahooQuoteUrl('GRF', { symbols: { GRF: { quoteSymbol: 'GRF.MC' } } })).toBe('https://finance.yahoo.com/quote/GRF.MC/');
   });
 });
+
+describe('parseRelayHistory', () => {
+  it('reads histories, drops bad points and reports missing symbols', async () => {
+    const { parseRelayHistory } = await import('./prices');
+    const parsed = parseRelayHistory(
+      {
+        history: { 'VOD.L': { currency: 'GBp', dates: ['2026-11-18', 'bad', '2026-11-19', '2026-11-20'], closes: [70, 1, 0, 72] } },
+        errors: { 'NOPE.L': 'Symbol not found.' },
+      },
+      ['VOD.L', 'NOPE.L', 'GONE'],
+    );
+    expect(parsed['VOD.L']).toEqual({ currency: 'GBp', dates: ['2026-11-18', '2026-11-20'], closes: [70, 72] });
+    expect(parsed['NOPE.L']).toEqual({ error: 'Symbol not found.' });
+    expect(parsed.GONE).toEqual({ error: 'No price history for this symbol.' });
+  });
+});

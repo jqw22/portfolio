@@ -13,6 +13,7 @@ import { DataMenu } from '@/components/ledger/DataMenu';
 import { EmptyState } from '@/components/ledger/EmptyState';
 import { HoldingsTable, HoldingsTotal } from '@/components/ledger/HoldingsTable';
 import { PricesDialog } from '@/components/ledger/PricesDialog';
+import { RiskAnalysis } from '@/components/ledger/RiskAnalysis';
 import { SummaryCards } from '@/components/ledger/SummaryCards';
 import { TransactionDialog, type TradePrefill } from '@/components/ledger/TransactionDialog';
 import { TotalValueChart } from '@/components/ledger/TotalValueChart';
@@ -514,6 +515,7 @@ export default function Index() {
                   <TabsTrigger value="analysis">Summary</TabsTrigger>
                   <TabsTrigger value="transactions">Transactions</TabsTrigger>
                   <TabsTrigger value="watchlist">Watchlist</TabsTrigger>
+                  <TabsTrigger value="risk">Analysis</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="holdings" className="mt-4 space-y-6">
@@ -636,6 +638,16 @@ export default function Index() {
                     quoteUrlFor={quoteUrlFor}
                     onAdd={handleAddWatch}
                     onRemove={handleRemoveWatch}
+                  />
+                </TabsContent>
+
+                <TabsContent value="risk" className="mt-4">
+                  <RiskAnalysis
+                    holdings={portfolio.openHoldings}
+                    prices={prices}
+                    priceSettings={priceSettings}
+                    currency={currency}
+                    names={knownNames}
                   />
                 </TabsContent>
 

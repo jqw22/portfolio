@@ -13,6 +13,7 @@ import {
   parseAlphaVantageQuote,
   parseFinnhubQuote,
   parseFxRates,
+  parseRelayHistory,
   parseRelayResponse,
   parseRelayUrl,
   PriceSourceError,
@@ -62,4 +63,31 @@ export async function fetchRelayQuotes(relayUrl: string, symbols: string[], sign
 /** Latest ECB reference rates against the euro. */
 export async function fetchFxRates(signal?: AbortSignal): Promise<FxRates> {
   return parseFxRates(await getJson('Frankfurter', 'https://api.frankfurter.dev/v1/latest', signal), Date.now());
+}
+
+/** Thrown when the relay doesn't know `history=`, i.e. it was deployed before price history was added. */
+export class RelayOutdatedError extends PriceSourceError {
+  constructor() {
+    super('Your price relay is out of date. Paste the latest price-relay.js into Cloudflare and deploy it again.');
+    this.name = 'RelayOutdatedError';
+  }
+}
+
+/** About a year of daily closes for Yahoo-style `symbols` from the user's price relay. */
+export async function fetchRelayHistory(relayUrl: string, symbols: string[], signal?: AbortSignal) {
+  const url = parseRelayUrl(relayUrl);
+  if (!url) throw new PriceSourceError('The price relay address must start with https://.');
+  url.searchParams.set('history', symbols.join(','));
+  let response: Response;
+  try {
+    response = await fetch(url.toString(), { signal });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw new PriceSourceError('Could not reach the price relay.');
+  }
+  const json: unknown = await response.json().catch(() => null);
+  // An older relay ignores history= and complains that no symbols were passed.
+  if (response.status === 400 && json && typeof json === 'object' && !('history' in json)) throw new RelayOutdatedError();
+  if (!response.ok) throw new PriceSourceError(`The price relay answered ${response.status}.`);
+  return parseRelayHistory(json, symbols);
 }

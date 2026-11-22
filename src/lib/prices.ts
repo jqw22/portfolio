@@ -651,3 +651,47 @@ export function parseFxRates(json: unknown, fetchedAt: number): FxRates {
   }
   return { base: record.base, date: typeof record.date === 'string' ? record.date : '', rates: clean, fetchedAt };
 }
+
+/** About a year of daily closes for one symbol, as the relay sends it. */
+export interface RelayHistory {
+  currency: string;
+  dates: string[];
+  closes: number[];
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Read the relay's `history=` answer: a price history or an error message for each symbol
+ * asked. Malformed points are dropped; symbols missing from the answer get an error.
+ */
+export function parseRelayHistory(json: unknown, asked: string[]): Record<string, RelayHistory | { error: string }> {
+  const record = asRecord(json);
+  const history = asRecord(record?.history);
+  if (!record || !history) {
+    throw new PriceSourceError(typeof record?.error === 'string' ? `Price relay: ${record.error}` : 'Unexpected response from the price relay.');
+  }
+  const errors = asRecord(record.errors) ?? {};
+  const out: Record<string, RelayHistory | { error: string }> = {};
+  for (const symbol of asked) {
+    const entry = asRecord(history[symbol]);
+    const dates: string[] = [];
+    const closes: number[] = [];
+    if (entry && Array.isArray(entry.dates) && Array.isArray(entry.closes)) {
+      entry.dates.forEach((date, index) => {
+        const close = Number((entry.closes as unknown[])[index]);
+        if (typeof date === 'string' && ISO_DATE.test(date) && Number.isFinite(close) && close > 0 && (dates.length === 0 || date > dates[dates.length - 1])) {
+          dates.push(date);
+          closes.push(close);
+        }
+      });
+    }
+    if (dates.length > 1) {
+      out[symbol] = { currency: typeof entry?.currency === 'string' ? entry.currency : '', dates, closes };
+    } else {
+      const error = errors[symbol];
+      out[symbol] = { error: typeof error === 'string' ? error : 'No price history for this symbol.' };
+    }
+  }
+  return out;
+}
