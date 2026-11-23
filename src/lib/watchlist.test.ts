@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { addToWatchlist, parseLedger, parseWatchlist, removeFromWatchlist, type Ledger } from './portfolio';
+import {
+  addToWatchlist,
+  formatShortDate,
+  parseLedger,
+  parseWatchlist,
+  removeFromWatchlist,
+  restoreWatchItem,
+  setWatchTrigger,
+  type Ledger,
+} from './portfolio';
 
 const empty: Ledger = { transactions: [], cash: [], labels: [], accounts: [], stockNotes: {}, watchlist: [] };
 
@@ -52,5 +61,41 @@ describe('watchlist', () => {
     expect(parseLedger({ version: 6, watchlist: [{ symbol: 'BP.L', addedOn: '2026-11-22' }] }).watchlist).toEqual([
       { symbol: 'BP.L', name: undefined, addedOn: '2026-11-22' },
     ]);
+  });
+
+  it('sets, replaces and clears a trigger price', () => {
+    let ledger = setWatchTrigger(addToWatchlist(empty, 'VOD.L'), 'vod.l', 0.65);
+    expect(ledger.watchlist[0]).toMatchObject({ symbol: 'VOD.L', triggerPrice: 0.65 });
+    ledger = setWatchTrigger(ledger, 'VOD.L', 0.8);
+    expect(ledger.watchlist[0].triggerPrice).toBe(0.8);
+    expect(setWatchTrigger(ledger, 'VOD.L', undefined).watchlist[0].triggerPrice).toBeUndefined();
+    // A zero or negative trigger counts as clearing it.
+    expect(setWatchTrigger(ledger, 'VOD.L', 0).watchlist[0].triggerPrice).toBeUndefined();
+  });
+
+  it('parses stored triggers and drops invalid ones', () => {
+    expect(
+      parseWatchlist([
+        { symbol: 'A', addedOn: '2026-11-01', triggerPrice: 12.5 },
+        { symbol: 'B', addedOn: '2026-11-01', triggerPrice: -1 },
+        { symbol: 'C', addedOn: '2026-11-01', triggerPrice: 'ten' },
+      ]),
+    ).toEqual([
+      { symbol: 'A', name: undefined, addedOn: '2026-11-01', triggerPrice: 12.5 },
+      { symbol: 'B', name: undefined, addedOn: '2026-11-01' },
+      { symbol: 'C', name: undefined, addedOn: '2026-11-01' },
+    ]);
+  });
+
+  it('restores a removed item with its date and trigger', () => {
+    const item = { symbol: 'AAPL', name: 'Apple', addedOn: '2026-10-01', triggerPrice: 150 };
+    const ledger = removeFromWatchlist({ ...empty, watchlist: [item] }, 'AAPL');
+    expect(restoreWatchItem(ledger, item).watchlist).toEqual([item]);
+  });
+
+  it('shows dates as dd/mm/yy', () => {
+    expect(formatShortDate('2026-11-23')).toBe('23/11/26');
+    expect(formatShortDate('2026-01-05')).toBe('05/01/26');
+    expect(formatShortDate('')).toBe('—');
   });
 });

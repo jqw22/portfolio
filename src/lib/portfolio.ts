@@ -93,6 +93,8 @@ export interface WatchItem {
   name?: string;
   /** YYYY-MM-DD the stock was added. */
   addedOn: string;
+  /** Price to watch for, in the ledger currency. */
+  triggerPrice?: number;
 }
 
 /**
@@ -302,9 +304,28 @@ export function parseWatchlist(value: unknown): WatchItem[] {
     seen.add(symbol);
     const name = typeof record.name === 'string' ? record.name.trim().slice(0, WATCH_NAME_MAX_LENGTH).trim() : '';
     const addedOn = (typeof record.addedOn === 'string' ? normalizeDate(record.addedOn) : null) ?? todayIso();
-    result.push({ symbol, name: name || undefined, addedOn });
+    const item: WatchItem = { symbol, name: name || undefined, addedOn };
+    const trigger = record.triggerPrice;
+    if (typeof trigger === 'number' && Number.isFinite(trigger) && trigger > 0) {
+      item.triggerPrice = trigger;
+    }
+    result.push(item);
   }
   return result;
+}
+
+/** Set a watched stock's trigger price, or clear it with `undefined` (or a price that isn't positive). */
+export function setWatchTrigger(ledger: Ledger, symbol: string, triggerPrice: number | undefined): Ledger {
+  const key = symbol.trim().toUpperCase();
+  const valid = triggerPrice !== undefined && Number.isFinite(triggerPrice) && triggerPrice > 0;
+  return {
+    ...ledger,
+    watchlist: ledger.watchlist.map((item) => {
+      if (item.symbol !== key) return item;
+      const { triggerPrice: _previous, ...rest } = item;
+      return valid ? { ...rest, triggerPrice } : rest;
+    }),
+  };
 }
 
 /** Add a stock to the watchlist; a symbol already on it gets the new name instead. */
@@ -319,6 +340,13 @@ export function addToWatchlist(ledger: Ledger, symbol: string, name?: string): L
     };
   }
   return { ...ledger, watchlist: [...ledger.watchlist, item] };
+}
+
+/** Put a removed item back exactly as it was (no-op if its symbol is already listed). */
+export function restoreWatchItem(ledger: Ledger, item: WatchItem): Ledger {
+  const [clean] = parseWatchlist([item]);
+  if (!clean || ledger.watchlist.some((entry) => entry.symbol === clean.symbol)) return ledger;
+  return { ...ledger, watchlist: [...ledger.watchlist, clean] };
 }
 
 /** Take a stock off the watchlist. */
@@ -537,6 +565,13 @@ export function formatPercent(value: number, decimals = 2): string {
   const safe = Number.isFinite(value) ? value : 0;
   const sign = safe > 0 ? '+' : '';
   return `${sign}${safe.toFixed(decimals)}%`;
+}
+
+/** Format an ISO (`YYYY-MM-DD`) date as dd/mm/yy, e.g. 23/11/26. */
+export function formatShortDate(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return iso || '—';
+  return `${match[3]}/${match[2]}/${match[1].slice(2)}`;
 }
 
 /** Format an ISO (`YYYY-MM-DD`) date for display. */

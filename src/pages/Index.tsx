@@ -148,6 +148,8 @@ export default function Index() {
     watchlist,
     addWatch,
     removeWatch,
+    restoreWatch,
+    setWatchTrigger,
     refresh,
   } = useStockTransactions();
   const { toast } = useToast();
@@ -302,7 +304,7 @@ export default function Index() {
     toast({
       title: `${item.name ?? item.symbol} removed from your watchlist`,
       action: (
-        <ToastAction altText="Put it back on the watchlist" onClick={() => addWatch(item.symbol, item.name)}>
+        <ToastAction altText="Put it back on the watchlist" onClick={() => restoreWatch(item)}>
           Undo
         </ToastAction>
       ),
@@ -638,6 +640,7 @@ export default function Index() {
                     quoteUrlFor={quoteUrlFor}
                     onAdd={handleAddWatch}
                     onRemove={handleRemoveWatch}
+                    onTriggerChange={setWatchTrigger}
                   />
                 </TabsContent>
 

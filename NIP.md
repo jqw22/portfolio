@@ -73,7 +73,8 @@ stocks they are watching:
     "AAPL": "Long-term hold. Review after results."
   },
   "watchlist": [                       // stocks being watched, owned or not, in the order added
-    { "symbol": "VOD.L", "name": "Vodafone Group", "addedOn": "2026-11-22" } // name optional
+    { "symbol": "VOD.L", "name": "Vodafone Group", "addedOn": "2026-11-22", // name optional
+      "triggerPrice": 0.65 }                           // trigger optional
   ],
   "transactions": [
     {
@@ -129,6 +130,8 @@ kept when a stock is sold out of, and resetting the ledger deletes them.
 Watchlist symbols are upper-cased tickers, as used on transactions, and appear at
 most once; `addedOn` is a YYYY-MM-DD date. Readers drop entries without a symbol
 and later repeats of a symbol. Resetting the ledger empties the watchlist.
+`triggerPrice` is an optional positive price in the display currency (an
+addition within version 6).
 
 ### Older versions
 
