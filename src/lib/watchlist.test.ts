@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { addToWatchlist, parseLedger, parseWatchlist, removeFromWatchlist, type Ledger } from './portfolio';
 
-const empty: Ledger = { transactions: [], cash: [], labels: [], accounts: [], stockNotes: {}, watchlist: [] };
+const empty: Ledger = { transactions: [], cash: [], labels: [], accounts: [], stockNotes: {}, accountNotes: {}, watchlist: [] };
 
 describe('watchlist', () => {
   it('adds a stock with an upper-cased symbol and today as the date', () => {

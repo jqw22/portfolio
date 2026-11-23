@@ -84,7 +84,7 @@ export function AppHeader({
         <div className="ml-auto flex items-center gap-2">
           <SyncStatus isLoggedIn={isLoggedIn} isSyncing={isSyncing} canSync={canSync} />
           <Select value={currency} onValueChange={onCurrencyChange}>
-            <SelectTrigger size="sm" className="hidden w-20 sm:flex" aria-label="Display currency">
+            <SelectTrigger size="sm" className="w-20" aria-label="Display currency">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

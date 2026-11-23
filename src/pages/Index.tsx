@@ -145,6 +145,8 @@ export default function Index() {
     deleteAccount,
     stockNotes,
     setStockNote,
+    accountNotes,
+    setAccountNote,
     watchlist,
     addWatch,
     removeWatch,
@@ -209,6 +211,14 @@ export default function Index() {
     refresh: refreshPrices,
     fetchOne: fetchPrice,
   } = usePrices(priceSymbols, currency);
+  // Holdings notes belong to the stock in its account; a holding with no account falls back to the shared note.
+  const setHoldingNote = useCallback(
+    (account: string | undefined, symbol: string, note: string) => {
+      if (account) setAccountNote(account, symbol, note);
+      else setStockNote(symbol, note);
+    },
+    [setAccountNote, setStockNote],
+  );
   const quoteUrlFor = useCallback((symbol: string) => yahooQuoteUrl(symbol, priceSettings), [priceSettings]);
   const accountSummary = useMemo(
     () => summariseByAccount(portfolio.holdings, cashBalances, prices),
@@ -219,7 +229,6 @@ export default function Index() {
     record: recordSnapshot,
     renameAccount: renameSnapshotAccount,
     clear: clearSnapshots,
-    restartFromToday: restartSnapshots,
   } = useAccountSnapshots();
   // Save today's value of each account whenever it changes (e.g. after prices refresh).
   useEffect(() => {
@@ -446,7 +455,7 @@ export default function Index() {
         canSync={canSync}
       >
         <DataMenu
-          ledger={{ transactions, cash, labels, accounts: savedAccounts, stockNotes, watchlist }}
+          ledger={{ transactions, cash, labels, accounts: savedAccounts, stockNotes, accountNotes, watchlist }}
           onRequestImport={() => fileInputRef.current?.click()}
           onLoadSample={handleLoadSample}
           onReset={() => {
@@ -577,7 +586,8 @@ export default function Index() {
                             sort={holdingSort}
                             onSortChange={setHoldingSort}
                             stockNotes={stockNotes}
-                            onNoteChange={setStockNote}
+                            accountNotes={accountNotes}
+                            onNoteChange={setHoldingNote}
                             quoteUrlFor={quoteUrlFor}
                             onAddTransaction={openAddFor}
                           />
@@ -605,7 +615,8 @@ export default function Index() {
                         sort={holdingSort}
                         onSortChange={setHoldingSort}
                         stockNotes={stockNotes}
-                        onNoteChange={setStockNote}
+                        accountNotes={accountNotes}
+                        onNoteChange={setHoldingNote}
                         quoteUrlFor={quoteUrlFor}
                         onAddTransaction={openAddFor}
                       />
@@ -668,7 +679,6 @@ export default function Index() {
                     snapshots={snapshots}
                     accounts={accounts}
                     currency={currency}
-                    onRestart={restartSnapshots}
                   />
                   <AccountValueChart snapshots={snapshots} accounts={accounts} currency={currency} />
                   <AnalysisTable
@@ -688,6 +698,7 @@ export default function Index() {
                     unnamedLabel="Unlabelled"
                     summary={labelSummary}
                     currency={currency}
+                    nameWidth="w-32"
                   />
                 </TabsContent>
               </Tabs>

@@ -107,7 +107,7 @@ export function axisMoney(value: number, step: number, currency: string): string
       maximumFractionDigits: step < 1 ? 2 : 0,
     });
   }
-  // Compact labels (£52.5K, £1.25M) with just enough decimals for the step.
+  // Compact labels (52.5K, 1.25M) with just enough decimals for the step.
   const unit = Math.abs(value) >= 1_000_000 ? 1_000_000 : 1000;
   let digits = 0;
   while (digits < 3 && Math.abs(Math.round((step / unit) * 10 ** digits) - (step / unit) * 10 ** digits) > 1e-9) {

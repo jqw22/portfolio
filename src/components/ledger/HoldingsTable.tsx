@@ -21,6 +21,7 @@ import { missingDayChangeReason, pnlClass } from '@/components/ledger/marketText
 import type { CashBalance } from '@/lib/cash';
 import {
   formatCurrency,
+  formatCurrencyWithSymbol,
   formatWhole,
   formatPercent,
   formatQuantity,
@@ -60,9 +61,11 @@ interface HoldingsTableProps {
   /** Row order. When given with `onSortChange`, the Stock and Label headings sort the table. */
   sort?: HoldingSort;
   onSortChange?: (sort: HoldingSort) => void;
-  /** Notes by upper-cased symbol. With `onNoteChange`, each stock gets a note icon. */
+  /** Notes by upper-cased symbol, for holdings with no account. */
   stockNotes?: Record<string, string>;
-  onNoteChange?: (symbol: string, note: string) => void;
+  /** Notes per account, then by upper-cased symbol. With `onNoteChange`, each stock gets a note icon. */
+  accountNotes?: Record<string, Record<string, string>>;
+  onNoteChange?: (account: string | undefined, symbol: string, note: string) => void;
   /** The Yahoo Finance page for a symbol. When given, each stock gets a link icon. */
   quoteUrlFor?: (symbol: string) => string;
   /** When given, each position gets a button that opens the trade form filled in for its account and stock. */
@@ -126,7 +129,7 @@ function formatNativePrice(value: number, currency: string): string {
   if (isPence(currency)) {
     return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value)}p`;
   }
-  return formatCurrency(value, currency, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  return formatCurrencyWithSymbol(value, currency, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 }
 
 function priceTitle(price: ResolvedPrice): string {
@@ -195,6 +198,7 @@ export function HoldingsTable({
   sort,
   onSortChange,
   stockNotes,
+  accountNotes,
   quoteUrlFor,
   onNoteChange,
   onAddTransaction,
@@ -243,7 +247,7 @@ export function HoldingsTable({
                 onSortChange={onSortChange}
                 className={cn('w-44', !showAccount && 'w-48 pl-6')}
               />
-              <SortableHead label="Label" sortKey="label" sort={sort} onSortChange={onSortChange} className="w-24" />
+              <SortableHead label="Label" sortKey="label" sort={sort} onSortChange={onSortChange} className="w-28" />
               <TableHead className="text-right">Shares</TableHead>
               <TableHead className="text-right">Avg cost</TableHead>
               <TableHead className={cn('text-right', lastPad(!showMarket && !showAdd))}>Cost basis</TableHead>
@@ -285,8 +289,12 @@ export function HoldingsTable({
                       {onNoteChange ? (
                         <StockNoteButton
                           stockName={holdingDisplayName(holding)}
-                          note={stockNotes?.[holding.symbol]}
-                          onSave={(note) => onNoteChange(holding.symbol, note)}
+                          note={
+                            holding.account
+                              ? accountNotes?.[holding.account]?.[holding.symbol]
+                              : stockNotes?.[holding.symbol]
+                          }
+                          onSave={(note) => onNoteChange(holding.account, holding.symbol, note)}
                         />
                       ) : null}
                       {!isOpen ? (

@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/useToast';
 import { transactionsToCsv } from '@/lib/csv';
-import { todayIso, type Ledger } from '@/lib/portfolio';
+import { noteCount as countNotes, todayIso, type Ledger } from '@/lib/portfolio';
 
 interface DataMenuProps {
   ledger: Ledger;
@@ -51,8 +51,8 @@ export function DataMenu({ ledger, onRequestImport, onLoadSample, onReset }: Dat
   const { toast } = useToast();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const { transactions, cash, labels, accounts, stockNotes, watchlist } = ledger;
-  const noteCount = Object.keys(stockNotes).length;
+  const { transactions, cash, labels, accounts, watchlist } = ledger;
+  const noteCount = countNotes(ledger);
   const entryCount = transactions.length + cash.length;
   const isEmpty = entryCount === 0 && labels.length === 0 && accounts.length === 0 && noteCount === 0 && watchlist.length === 0;
 
