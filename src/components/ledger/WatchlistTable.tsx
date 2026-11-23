@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { ResolvedPrice } from '@/lib/prices';
 import { cn } from '@/lib/utils';
-import { formatCurrency, formatDate, formatPercent, parseNumber, triggerReached, type WatchItem } from '@/lib/portfolio';
+import { formatCurrency, formatPercent, formatShortDate, parseNumber, type WatchItem } from '@/lib/portfolio';
 
 interface WatchlistTableProps {
   items: WatchItem[];
@@ -29,8 +29,8 @@ interface WatchlistTableProps {
   quoteUrlFor: (symbol: string) => string;
   onAdd: (symbol: string, name?: string) => void;
   onRemove: (item: WatchItem) => void;
-  /** Set or clear a trigger price; the latest price decides which way it triggers. */
-  onTriggerChange: (symbol: string, triggerPrice: number | undefined, latestPrice: number | null) => void;
+  /** Set or clear a trigger price. */
+  onTriggerChange: (symbol: string, triggerPrice: number | undefined) => void;
 }
 
 function displayName(item: WatchItem): string {
@@ -44,28 +44,38 @@ function sortItems(items: WatchItem[]): WatchItem[] {
   );
 }
 
-/** Day change for one share: the percentage on top, the change in price below. */
-function WatchDayChangeCell({ price, currency }: { price: ResolvedPrice | null | undefined; currency: string }) {
+/** Change in price per share since the previous close, in the ledger currency. */
+function perShareChange(price: ResolvedPrice | null | undefined): number | null {
   const percent = price?.dayChangePercent ?? null;
-  if (percent === null) {
-    return (
-      <span className="text-muted-foreground" title={missingDayChangeReason(price)}>
-        —
-      </span>
-    );
-  }
-  const perShare = price?.price != null ? price.price - price.price / (1 + percent / 100) : null;
+  if (percent === null || price?.price == null) return null;
+  return price.price - price.price / (1 + percent / 100);
+}
+
+function MissingDayChange({ price }: { price: ResolvedPrice | null | undefined }) {
   return (
-    <div className={pnlClass(percent)}>
-      <span className="font-medium">{formatPercent(percent, 1)}</span>
-      {perShare !== null ? (
-        <p className="mt-0.5 text-xs">
-          {perShare > 0 ? '+' : ''}
-          {formatCurrency(perShare, currency)}
-        </p>
-      ) : null}
-    </div>
+    <span className="text-muted-foreground" title={missingDayChangeReason(price)}>
+      —
+    </span>
   );
+}
+
+/** Day change per share in pounds. */
+function DayChangeValueCell({ price, currency }: { price: ResolvedPrice | null | undefined; currency: string }) {
+  const change = perShareChange(price);
+  if (change === null) return <MissingDayChange price={price} />;
+  return (
+    <span className={cn('font-medium', pnlClass(change))}>
+      {change > 0 ? '+' : ''}
+      {formatCurrency(change, currency)}
+    </span>
+  );
+}
+
+/** Day change as a percentage. */
+function DayChangePercentCell({ price }: { price: ResolvedPrice | null | undefined }) {
+  const percent = price?.dayChangePercent ?? null;
+  if (percent === null) return <MissingDayChange price={price} />;
+  return <span className={cn('font-medium', pnlClass(percent))}>{formatPercent(percent, 1)}</span>;
 }
 
 /** Shows a trigger price as typed, without trailing zeros, e.g. 152.5. */
@@ -76,7 +86,7 @@ function triggerText(value: number | undefined): string {
 /**
  * An editable trigger price. Saved on Enter or when the box loses focus; Escape
  * puts the saved value back; clearing the box removes the trigger. Below it:
- * how far the latest price still has to move, or "Reached".
+ * how far the latest price is from it.
  */
 function TriggerCell({
   item,
@@ -123,11 +133,10 @@ function TriggerCell({
     }
   };
 
-  const reached = triggerReached(item, latestPrice);
   let status: string | null = null;
-  if (item.triggerPrice !== undefined && latestPrice !== null && !reached) {
+  if (item.triggerPrice !== undefined && latestPrice !== null && latestPrice > 0) {
     const move = ((item.triggerPrice - latestPrice) / latestPrice) * 100;
-    status = `${move < 0 ? '↓' : '↑'} ${formatPercent(Math.abs(move), 1).replace('+', '')} to go`;
+    status = Math.abs(move) < 0.05 ? 'At trigger' : `${move < 0 ? '↓' : '↑'} ${Math.abs(move).toFixed(1)}% to go`;
   }
 
   return (
@@ -147,23 +156,13 @@ function TriggerCell({
           className="h-8 pl-6 text-right tabular-nums"
         />
       </div>
-      {reached ? (
-        <Badge className="bg-amber-500 text-[0.65rem] text-white hover:bg-amber-500" title={reachedTitle(item, latestPrice, currency)}>
-          Reached
-        </Badge>
-      ) : status ? (
+      {status ? (
         <span className="text-xs text-muted-foreground" title="How far the latest price has to move to reach the trigger">
           {status}
         </span>
       ) : null}
     </div>
   );
-}
-
-function reachedTitle(item: WatchItem, latestPrice: number | null, currency: string): string {
-  if (item.triggerPrice === undefined || latestPrice === null) return '';
-  const side = item.triggerWhen === 'below' ? 'at or below' : 'at or above';
-  return `Latest price ${formatCurrency(latestPrice, currency)} is ${side} the trigger of ${formatCurrency(item.triggerPrice, currency)}`;
 }
 
 /** The currency's symbol on its own, e.g. "£". */
@@ -226,7 +225,7 @@ export function WatchlistTable({
           </CardTitle>
           <p className="text-sm text-muted-foreground">
             Stocks you want to keep an eye on. Prices update with Refresh, and the list syncs with the rest of your data.
-            A trigger price set below the latest price is reached when the price falls to it; set above, when the price rises to it.
+            Type a trigger price to see how far the latest price is from it.
           </p>
         </div>
         <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -268,14 +267,16 @@ export function WatchlistTable({
             <p>No stocks on your watchlist yet. Add one above with the same symbol you would use for a trade.</p>
           </div>
         ) : (
-          <Table className="table-fixed min-w-[48rem]">
+          <Table className="table-fixed min-w-[56rem]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="w-[32%] pl-6">Stock</TableHead>
+                <TableHead className="w-24 pl-6">Symbol</TableHead>
+                <TableHead className="w-[26%]">Stock</TableHead>
                 <TableHead className="text-right">Latest price</TableHead>
                 <TableHead className="text-right">Day change</TableHead>
-                <TableHead className="text-right">Trigger price</TableHead>
-                <TableHead className="text-right">Added</TableHead>
+                <TableHead className="w-20 text-right">%</TableHead>
+                <TableHead className="w-36 text-right">Trigger price</TableHead>
+                <TableHead className="w-24 text-right">Added</TableHead>
                 <TableHead className="w-16 pr-6 text-right">
                   <span className="sr-only">Remove</span>
                 </TableHead>
@@ -286,13 +287,14 @@ export function WatchlistTable({
                 const price = prices[item.symbol];
                 const label = displayName(item);
                 const latest = price?.price ?? null;
-                const reached = triggerReached(item, latest) === true;
                 return (
-                  <TableRow
-                    key={item.symbol}
-                    className={cn('group/row', reached && 'bg-amber-50 hover:bg-amber-100/70 dark:bg-amber-950/30 dark:hover:bg-amber-950/50')}
-                  >
+                  <TableRow key={item.symbol} className="group/row">
                     <TableCell className="pl-6">
+                      <span className="block truncate font-medium" title={item.symbol}>
+                        {item.symbol}
+                      </span>
+                    </TableCell>
+                    <TableCell>
                       <div className="flex min-w-0 items-center gap-1.5">
                         <span className="truncate font-semibold" title={label}>
                           {label}
@@ -309,25 +311,25 @@ export function WatchlistTable({
                           </Badge>
                         ) : null}
                       </div>
-                      {item.name?.trim() ? (
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.symbol}</p>
-                      ) : null}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       <LatestPriceCell price={price} currency={currency} />
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      <WatchDayChangeCell price={price} currency={currency} />
+                      <DayChangeValueCell price={price} currency={currency} />
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      <DayChangePercentCell price={price} />
                     </TableCell>
                     <TableCell className="text-right">
                       <TriggerCell
                         item={item}
                         latestPrice={latest}
                         currency={currency}
-                        onChange={(value) => onTriggerChange(item.symbol, value, latest)}
+                        onChange={(value) => onTriggerChange(item.symbol, value)}
                       />
                     </TableCell>
-                    <TableCell className="text-right text-muted-foreground tabular-nums">{formatDate(item.addedOn)}</TableCell>
+                    <TableCell className="text-right text-muted-foreground tabular-nums">{formatShortDate(item.addedOn)}</TableCell>
                     <TableCell className="pr-6 text-right">
                       <Tooltip delayDuration={300}>
                         <TooltipTrigger asChild>

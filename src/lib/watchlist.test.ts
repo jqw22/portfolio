@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   addToWatchlist,
+  formatShortDate,
   parseLedger,
   parseWatchlist,
   removeFromWatchlist,
   restoreWatchItem,
   setWatchTrigger,
-  triggerReached,
   type Ledger,
 } from './portfolio';
 
@@ -63,51 +63,39 @@ describe('watchlist', () => {
     ]);
   });
 
-  it('sets a trigger below the latest price to fire when the price falls to it', () => {
-    let ledger = addToWatchlist(empty, 'VOD.L');
-    ledger = setWatchTrigger(ledger, 'vod.l', 0.65, 0.71);
-    const item = ledger.watchlist[0];
-    expect(item).toMatchObject({ triggerPrice: 0.65, triggerWhen: 'below' });
-    expect(triggerReached(item, 0.7)).toBe(false);
-    expect(triggerReached(item, 0.65)).toBe(true);
-    expect(triggerReached(item, 0.6)).toBe(true);
-  });
-
-  it('sets a trigger above the latest price to fire when the price rises to it', () => {
-    const item = setWatchTrigger(addToWatchlist(empty, 'NVDA'), 'NVDA', 150, 134.7).watchlist[0];
-    expect(item.triggerWhen).toBe('above');
-    expect(triggerReached(item, 149.99)).toBe(false);
-    expect(triggerReached(item, 151)).toBe(true);
-  });
-
-  it('keeps a trigger with no direction when there is no price, and clears it', () => {
-    let ledger = setWatchTrigger(addToWatchlist(empty, 'GRF.MC'), 'GRF.MC', 10, null);
-    expect(ledger.watchlist[0]).toMatchObject({ triggerPrice: 10 });
-    expect(ledger.watchlist[0].triggerWhen).toBeUndefined();
-    expect(triggerReached(ledger.watchlist[0], 9)).toBeNull();
-    ledger = setWatchTrigger(ledger, 'GRF.MC', undefined);
-    expect(ledger.watchlist[0].triggerPrice).toBeUndefined();
+  it('sets, replaces and clears a trigger price', () => {
+    let ledger = setWatchTrigger(addToWatchlist(empty, 'VOD.L'), 'vod.l', 0.65);
+    expect(ledger.watchlist[0]).toMatchObject({ symbol: 'VOD.L', triggerPrice: 0.65 });
+    ledger = setWatchTrigger(ledger, 'VOD.L', 0.8);
+    expect(ledger.watchlist[0].triggerPrice).toBe(0.8);
+    expect(setWatchTrigger(ledger, 'VOD.L', undefined).watchlist[0].triggerPrice).toBeUndefined();
     // A zero or negative trigger counts as clearing it.
-    expect(setWatchTrigger(ledger, 'GRF.MC', 0, 5).watchlist[0].triggerPrice).toBeUndefined();
+    expect(setWatchTrigger(ledger, 'VOD.L', 0).watchlist[0].triggerPrice).toBeUndefined();
   });
 
   it('parses stored triggers and drops invalid ones', () => {
     expect(
       parseWatchlist([
-        { symbol: 'A', addedOn: '2026-11-01', triggerPrice: 12.5, triggerWhen: 'above' },
-        { symbol: 'B', addedOn: '2026-11-01', triggerPrice: -1, triggerWhen: 'below' },
-        { symbol: 'C', addedOn: '2026-11-01', triggerPrice: 3, triggerWhen: 'sideways' },
+        { symbol: 'A', addedOn: '2026-11-01', triggerPrice: 12.5 },
+        { symbol: 'B', addedOn: '2026-11-01', triggerPrice: -1 },
+        { symbol: 'C', addedOn: '2026-11-01', triggerPrice: 'ten' },
       ]),
     ).toEqual([
-      { symbol: 'A', name: undefined, addedOn: '2026-11-01', triggerPrice: 12.5, triggerWhen: 'above' },
+      { symbol: 'A', name: undefined, addedOn: '2026-11-01', triggerPrice: 12.5 },
       { symbol: 'B', name: undefined, addedOn: '2026-11-01' },
-      { symbol: 'C', name: undefined, addedOn: '2026-11-01', triggerPrice: 3 },
+      { symbol: 'C', name: undefined, addedOn: '2026-11-01' },
     ]);
   });
 
   it('restores a removed item with its date and trigger', () => {
-    const item = { symbol: 'AAPL', name: 'Apple', addedOn: '2026-10-01', triggerPrice: 150, triggerWhen: 'below' as const };
+    const item = { symbol: 'AAPL', name: 'Apple', addedOn: '2026-10-01', triggerPrice: 150 };
     const ledger = removeFromWatchlist({ ...empty, watchlist: [item] }, 'AAPL');
     expect(restoreWatchItem(ledger, item).watchlist).toEqual([item]);
+  });
+
+  it('shows dates as dd/mm/yy', () => {
+    expect(formatShortDate('2026-11-23')).toBe('23/11/26');
+    expect(formatShortDate('2026-01-05')).toBe('05/01/26');
+    expect(formatShortDate('')).toBe('—');
   });
 });

@@ -146,8 +146,8 @@ export interface StockTransactions {
   removeWatch: (symbol: string) => void;
   /** Put a removed watchlist item back as it was. */
   restoreWatch: (item: WatchItem) => void;
-  /** Set or clear (with `undefined`) a watched stock's trigger price; `latestPrice` sets its direction. */
-  setWatchTrigger: (symbol: string, triggerPrice: number | undefined, latestPrice?: number | null) => void;
+  /** Set or clear (with `undefined`) a watched stock's trigger price. */
+  setWatchTrigger: (symbol: string, triggerPrice: number | undefined) => void;
   /** The raw query, exposed for advanced callers. */
   query: UseQueryResult<Ledger, Error>;
 }
@@ -460,8 +460,8 @@ export function useStockTransactions(): StockTransactions {
   );
 
   const setWatchTrigger = useCallback(
-    (symbol: string, triggerPrice: number | undefined, latestPrice?: number | null) => {
-      commitLedger((previous) => setLedgerWatchTrigger(previous, symbol, triggerPrice, latestPrice));
+    (symbol: string, triggerPrice: number | undefined) => {
+      commitLedger((previous) => setLedgerWatchTrigger(previous, symbol, triggerPrice));
     },
     [commitLedger],
   );

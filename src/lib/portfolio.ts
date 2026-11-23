@@ -95,15 +95,7 @@ export interface WatchItem {
   addedOn: string;
   /** Price to watch for, in the ledger currency. */
   triggerPrice?: number;
-  /**
-   * Which way the price has to move to reach the trigger: `below` when the
-   * trigger was set under the latest price (e.g. a price to buy at), `above`
-   * when set over it. Missing when there was no price to compare with.
-   */
-  triggerWhen?: TriggerDirection;
 }
-
-export type TriggerDirection = 'above' | 'below';
 
 /**
  * Aggregated position for a single symbol within one account (or with no
@@ -316,46 +308,24 @@ export function parseWatchlist(value: unknown): WatchItem[] {
     const trigger = record.triggerPrice;
     if (typeof trigger === 'number' && Number.isFinite(trigger) && trigger > 0) {
       item.triggerPrice = trigger;
-      if (record.triggerWhen === 'above' || record.triggerWhen === 'below') item.triggerWhen = record.triggerWhen;
     }
     result.push(item);
   }
   return result;
 }
 
-/**
- * Set a watched stock's trigger price (or clear it with `undefined`). The
- * direction is taken from where the trigger sits against `latestPrice`.
- */
-export function setWatchTrigger(
-  ledger: Ledger,
-  symbol: string,
-  triggerPrice: number | undefined,
-  latestPrice?: number | null,
-): Ledger {
+/** Set a watched stock's trigger price, or clear it with `undefined` (or a price that isn't positive). */
+export function setWatchTrigger(ledger: Ledger, symbol: string, triggerPrice: number | undefined): Ledger {
   const key = symbol.trim().toUpperCase();
   const valid = triggerPrice !== undefined && Number.isFinite(triggerPrice) && triggerPrice > 0;
   return {
     ...ledger,
     watchlist: ledger.watchlist.map((item) => {
       if (item.symbol !== key) return item;
-      const { triggerPrice: _price, triggerWhen: _when, ...rest } = item;
-      if (!valid) return rest;
-      const next: WatchItem = { ...rest, triggerPrice };
-      if (latestPrice != null && Number.isFinite(latestPrice) && latestPrice !== triggerPrice) {
-        next.triggerWhen = triggerPrice < latestPrice ? 'below' : 'above';
-      }
-      return next;
+      const { triggerPrice: _previous, ...rest } = item;
+      return valid ? { ...rest, triggerPrice } : rest;
     }),
   };
-}
-
-/** Whether a latest price has reached the trigger, or `null` when that can't be told. */
-export function triggerReached(item: Pick<WatchItem, 'triggerPrice' | 'triggerWhen'>, latestPrice: number | null | undefined): boolean | null {
-  if (item.triggerPrice === undefined || latestPrice == null) return null;
-  if (item.triggerWhen === 'below') return latestPrice <= item.triggerPrice;
-  if (item.triggerWhen === 'above') return latestPrice >= item.triggerPrice;
-  return null;
 }
 
 /** Add a stock to the watchlist; a symbol already on it gets the new name instead. */
@@ -595,6 +565,13 @@ export function formatPercent(value: number, decimals = 2): string {
   const safe = Number.isFinite(value) ? value : 0;
   const sign = safe > 0 ? '+' : '';
   return `${sign}${safe.toFixed(decimals)}%`;
+}
+
+/** Format an ISO (`YYYY-MM-DD`) date as dd/mm/yy, e.g. 23/11/26. */
+export function formatShortDate(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return iso || '—';
+  return `${match[3]}/${match[2]}/${match[1].slice(2)}`;
 }
 
 /** Format an ISO (`YYYY-MM-DD`) date for display. */
