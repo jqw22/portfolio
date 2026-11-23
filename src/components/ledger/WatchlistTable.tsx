@@ -141,10 +141,7 @@ function TriggerCell({
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <div className="relative w-28">
-        <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-sm text-muted-foreground">
-          {currencySymbol(currency)}
-        </span>
+      <div className="w-28">
         <Input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
@@ -152,8 +149,8 @@ function TriggerCell({
           onKeyDown={handleKeyDown}
           inputMode="decimal"
           placeholder="Set"
-          aria-label={`Trigger price for ${displayName(item)}`}
-          className="h-8 pl-6 text-right tabular-nums"
+          aria-label={`Trigger price for ${displayName(item)} in ${currency}`}
+          className="h-8 text-right tabular-nums"
         />
       </div>
       {status ? (
@@ -163,19 +160,6 @@ function TriggerCell({
       ) : null}
     </div>
   );
-}
-
-/** The currency's symbol on its own, e.g. "£". */
-function currencySymbol(currency: string): string {
-  try {
-    return (
-      new Intl.NumberFormat(undefined, { style: 'currency', currency, currencyDisplay: 'narrowSymbol' })
-        .formatToParts(0)
-        .find((part) => part.type === 'currency')?.value ?? ''
-    );
-  } catch {
-    return '';
-  }
 }
 
 export function WatchlistTable({
