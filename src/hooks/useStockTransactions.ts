@@ -34,6 +34,8 @@ import {
   setStockNote as setLedgerStockNote,
   addToWatchlist as addLedgerWatch,
   removeFromWatchlist as removeLedgerWatch,
+  setWatchTrigger as setLedgerWatchTrigger,
+  restoreWatchItem,
   type WatchItem,
   type CashMovement,
   type CashMovementInput,
@@ -142,6 +144,10 @@ export interface StockTransactions {
   addWatch: (symbol: string, name?: string) => void;
   /** Take a stock off the watchlist. */
   removeWatch: (symbol: string) => void;
+  /** Put a removed watchlist item back as it was. */
+  restoreWatch: (item: WatchItem) => void;
+  /** Set or clear (with `undefined`) a watched stock's trigger price; `latestPrice` sets its direction. */
+  setWatchTrigger: (symbol: string, triggerPrice: number | undefined, latestPrice?: number | null) => void;
   /** The raw query, exposed for advanced callers. */
   query: UseQueryResult<Ledger, Error>;
 }
@@ -446,6 +452,20 @@ export function useStockTransactions(): StockTransactions {
     [commitLedger],
   );
 
+  const restoreWatch = useCallback(
+    (item: WatchItem) => {
+      commitLedger((previous) => restoreWatchItem(previous, item));
+    },
+    [commitLedger],
+  );
+
+  const setWatchTrigger = useCallback(
+    (symbol: string, triggerPrice: number | undefined, latestPrice?: number | null) => {
+      commitLedger((previous) => setLedgerWatchTrigger(previous, symbol, triggerPrice, latestPrice));
+    },
+    [commitLedger],
+  );
+
   const refresh = useCallback(() => {
     void query.refetch();
   }, [query]);
@@ -479,6 +499,8 @@ export function useStockTransactions(): StockTransactions {
     setStockNote,
     addWatch,
     removeWatch,
+    setWatchTrigger,
+    restoreWatch,
     query,
   };
 }

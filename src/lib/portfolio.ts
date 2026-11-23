@@ -93,7 +93,17 @@ export interface WatchItem {
   name?: string;
   /** YYYY-MM-DD the stock was added. */
   addedOn: string;
+  /** Price to watch for, in the ledger currency. */
+  triggerPrice?: number;
+  /**
+   * Which way the price has to move to reach the trigger: `below` when the
+   * trigger was set under the latest price (e.g. a price to buy at), `above`
+   * when set over it. Missing when there was no price to compare with.
+   */
+  triggerWhen?: TriggerDirection;
 }
+
+export type TriggerDirection = 'above' | 'below';
 
 /**
  * Aggregated position for a single symbol within one account (or with no
@@ -302,9 +312,50 @@ export function parseWatchlist(value: unknown): WatchItem[] {
     seen.add(symbol);
     const name = typeof record.name === 'string' ? record.name.trim().slice(0, WATCH_NAME_MAX_LENGTH).trim() : '';
     const addedOn = (typeof record.addedOn === 'string' ? normalizeDate(record.addedOn) : null) ?? todayIso();
-    result.push({ symbol, name: name || undefined, addedOn });
+    const item: WatchItem = { symbol, name: name || undefined, addedOn };
+    const trigger = record.triggerPrice;
+    if (typeof trigger === 'number' && Number.isFinite(trigger) && trigger > 0) {
+      item.triggerPrice = trigger;
+      if (record.triggerWhen === 'above' || record.triggerWhen === 'below') item.triggerWhen = record.triggerWhen;
+    }
+    result.push(item);
   }
   return result;
+}
+
+/**
+ * Set a watched stock's trigger price (or clear it with `undefined`). The
+ * direction is taken from where the trigger sits against `latestPrice`.
+ */
+export function setWatchTrigger(
+  ledger: Ledger,
+  symbol: string,
+  triggerPrice: number | undefined,
+  latestPrice?: number | null,
+): Ledger {
+  const key = symbol.trim().toUpperCase();
+  const valid = triggerPrice !== undefined && Number.isFinite(triggerPrice) && triggerPrice > 0;
+  return {
+    ...ledger,
+    watchlist: ledger.watchlist.map((item) => {
+      if (item.symbol !== key) return item;
+      const { triggerPrice: _price, triggerWhen: _when, ...rest } = item;
+      if (!valid) return rest;
+      const next: WatchItem = { ...rest, triggerPrice };
+      if (latestPrice != null && Number.isFinite(latestPrice) && latestPrice !== triggerPrice) {
+        next.triggerWhen = triggerPrice < latestPrice ? 'below' : 'above';
+      }
+      return next;
+    }),
+  };
+}
+
+/** Whether a latest price has reached the trigger, or `null` when that can't be told. */
+export function triggerReached(item: Pick<WatchItem, 'triggerPrice' | 'triggerWhen'>, latestPrice: number | null | undefined): boolean | null {
+  if (item.triggerPrice === undefined || latestPrice == null) return null;
+  if (item.triggerWhen === 'below') return latestPrice <= item.triggerPrice;
+  if (item.triggerWhen === 'above') return latestPrice >= item.triggerPrice;
+  return null;
 }
 
 /** Add a stock to the watchlist; a symbol already on it gets the new name instead. */
@@ -319,6 +370,13 @@ export function addToWatchlist(ledger: Ledger, symbol: string, name?: string): L
     };
   }
   return { ...ledger, watchlist: [...ledger.watchlist, item] };
+}
+
+/** Put a removed item back exactly as it was (no-op if its symbol is already listed). */
+export function restoreWatchItem(ledger: Ledger, item: WatchItem): Ledger {
+  const [clean] = parseWatchlist([item]);
+  if (!clean || ledger.watchlist.some((entry) => entry.symbol === clean.symbol)) return ledger;
+  return { ...ledger, watchlist: [...ledger.watchlist, clean] };
 }
 
 /** Take a stock off the watchlist. */

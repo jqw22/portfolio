@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Eye, Plus, Trash2 } from 'lucide-react';
 
 import { LatestPriceCell } from '@/components/ledger/HoldingsTable';
@@ -13,7 +13,8 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { ResolvedPrice } from '@/lib/prices';
-import { formatCurrency, formatDate, formatPercent, type WatchItem } from '@/lib/portfolio';
+import { cn } from '@/lib/utils';
+import { formatCurrency, formatDate, formatPercent, parseNumber, triggerReached, type WatchItem } from '@/lib/portfolio';
 
 interface WatchlistTableProps {
   items: WatchItem[];
@@ -28,6 +29,8 @@ interface WatchlistTableProps {
   quoteUrlFor: (symbol: string) => string;
   onAdd: (symbol: string, name?: string) => void;
   onRemove: (item: WatchItem) => void;
+  /** Set or clear a trigger price; the latest price decides which way it triggers. */
+  onTriggerChange: (symbol: string, triggerPrice: number | undefined, latestPrice: number | null) => void;
 }
 
 function displayName(item: WatchItem): string {
@@ -65,6 +68,117 @@ function WatchDayChangeCell({ price, currency }: { price: ResolvedPrice | null |
   );
 }
 
+/** Shows a trigger price as typed, without trailing zeros, e.g. 152.5. */
+function triggerText(value: number | undefined): string {
+  return value === undefined ? '' : String(Number(value.toFixed(4)));
+}
+
+/**
+ * An editable trigger price. Saved on Enter or when the box loses focus; Escape
+ * puts the saved value back; clearing the box removes the trigger. Below it:
+ * how far the latest price still has to move, or "Reached".
+ */
+function TriggerCell({
+  item,
+  latestPrice,
+  currency,
+  onChange,
+}: {
+  item: WatchItem;
+  latestPrice: number | null;
+  currency: string;
+  onChange: (triggerPrice: number | undefined) => void;
+}) {
+  const saved = triggerText(item.triggerPrice);
+  const [draft, setDraft] = useState(saved);
+  // Follow changes that arrive from elsewhere (e.g. a sync from another device).
+  const [shown, setShown] = useState(saved);
+  if (shown !== saved) {
+    setShown(saved);
+    setDraft(saved);
+  }
+
+  const commit = () => {
+    const text = draft.trim();
+    if (text === saved) return;
+    if (text === '') {
+      onChange(undefined);
+      return;
+    }
+    const value = parseNumber(text);
+    if (value === null || value <= 0) {
+      setDraft(saved);
+      return;
+    }
+    onChange(value);
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') event.currentTarget.blur();
+    if (event.key === 'Escape') {
+      setDraft(saved);
+      // Blur after the reset so commit sees the saved value.
+      const input = event.currentTarget;
+      requestAnimationFrame(() => input.blur());
+    }
+  };
+
+  const reached = triggerReached(item, latestPrice);
+  let status: string | null = null;
+  if (item.triggerPrice !== undefined && latestPrice !== null && !reached) {
+    const move = ((item.triggerPrice - latestPrice) / latestPrice) * 100;
+    status = `${move < 0 ? '↓' : '↑'} ${formatPercent(Math.abs(move), 1).replace('+', '')} to go`;
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className="relative w-28">
+        <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-sm text-muted-foreground">
+          {currencySymbol(currency)}
+        </span>
+        <Input
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          onKeyDown={handleKeyDown}
+          inputMode="decimal"
+          placeholder="Set"
+          aria-label={`Trigger price for ${displayName(item)}`}
+          className="h-8 pl-6 text-right tabular-nums"
+        />
+      </div>
+      {reached ? (
+        <Badge className="bg-amber-500 text-[0.65rem] text-white hover:bg-amber-500" title={reachedTitle(item, latestPrice, currency)}>
+          Reached
+        </Badge>
+      ) : status ? (
+        <span className="text-xs text-muted-foreground" title="How far the latest price has to move to reach the trigger">
+          {status}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function reachedTitle(item: WatchItem, latestPrice: number | null, currency: string): string {
+  if (item.triggerPrice === undefined || latestPrice === null) return '';
+  const side = item.triggerWhen === 'below' ? 'at or below' : 'at or above';
+  return `Latest price ${formatCurrency(latestPrice, currency)} is ${side} the trigger of ${formatCurrency(item.triggerPrice, currency)}`;
+}
+
+/** The currency's symbol on its own, e.g. "£". */
+function currencySymbol(currency: string): string {
+  try {
+    return (
+      new Intl.NumberFormat(undefined, { style: 'currency', currency, currencyDisplay: 'narrowSymbol' })
+        .formatToParts(0)
+        .find((part) => part.type === 'currency')?.value ?? ''
+    );
+  } catch {
+    return '';
+  }
+}
+
 export function WatchlistTable({
   items,
   currency,
@@ -76,6 +190,7 @@ export function WatchlistTable({
   quoteUrlFor,
   onAdd,
   onRemove,
+  onTriggerChange,
 }: WatchlistTableProps) {
   const [symbol, setSymbol] = useState('');
   const [name, setName] = useState('');
@@ -111,6 +226,7 @@ export function WatchlistTable({
           </CardTitle>
           <p className="text-sm text-muted-foreground">
             Stocks you want to keep an eye on. Prices update with Refresh, and the list syncs with the rest of your data.
+            A trigger price set below the latest price is reached when the price falls to it; set above, when the price rises to it.
           </p>
         </div>
         <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -152,12 +268,13 @@ export function WatchlistTable({
             <p>No stocks on your watchlist yet. Add one above with the same symbol you would use for a trade.</p>
           </div>
         ) : (
-          <Table className="table-fixed min-w-[40rem]">
+          <Table className="table-fixed min-w-[48rem]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="w-[40%] pl-6">Stock</TableHead>
+                <TableHead className="w-[32%] pl-6">Stock</TableHead>
                 <TableHead className="text-right">Latest price</TableHead>
                 <TableHead className="text-right">Day change</TableHead>
+                <TableHead className="text-right">Trigger price</TableHead>
                 <TableHead className="text-right">Added</TableHead>
                 <TableHead className="w-16 pr-6 text-right">
                   <span className="sr-only">Remove</span>
@@ -168,8 +285,13 @@ export function WatchlistTable({
               {rows.map((item) => {
                 const price = prices[item.symbol];
                 const label = displayName(item);
+                const latest = price?.price ?? null;
+                const reached = triggerReached(item, latest) === true;
                 return (
-                  <TableRow key={item.symbol} className="group/row">
+                  <TableRow
+                    key={item.symbol}
+                    className={cn('group/row', reached && 'bg-amber-50 hover:bg-amber-100/70 dark:bg-amber-950/30 dark:hover:bg-amber-950/50')}
+                  >
                     <TableCell className="pl-6">
                       <div className="flex min-w-0 items-center gap-1.5">
                         <span className="truncate font-semibold" title={label}>
@@ -196,6 +318,14 @@ export function WatchlistTable({
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       <WatchDayChangeCell price={price} currency={currency} />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <TriggerCell
+                        item={item}
+                        latestPrice={latest}
+                        currency={currency}
+                        onChange={(value) => onTriggerChange(item.symbol, value, latest)}
+                      />
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground tabular-nums">{formatDate(item.addedOn)}</TableCell>
                     <TableCell className="pr-6 text-right">
