@@ -36,6 +36,8 @@ export interface StockRisk {
   volatility: number | null;
   /** Largest one-day fall (a negative fraction) and its date. */
   worstDay: { change: number; date: string } | null;
+  /** Change since the last close of the previous year, as a fraction; `null` when the history starts later. */
+  ytd: number | null;
   /** Correlation with the benchmark's daily returns, -1 to 1. */
   benchmarkCorrelation: number | null;
   /** Share of the portfolio's swings that comes from this stock (sums to about 1). */
@@ -61,6 +63,9 @@ export interface RiskReport {
   /** Benchmark's own yearly volatility. */
   benchmarkVolatility: number | null;
   portfolioWorstDay: { change: number; date: string } | null;
+  /** What the stocks held now did this year, weighted by their value at the start of the year. */
+  portfolioYtd: number | null;
+  benchmarkYtd: number | null;
   /** Correlation of each pair of stocks, in `stocks` order; `null` where they share too few days. */
   correlations: (number | null)[][];
   /** Simple average of all pair correlations. */
@@ -158,6 +163,40 @@ function worst(returns: { date: string; change: number }[]): { change: number; d
   let found: { change: number; date: string } | null = null;
   for (const entry of returns) if (!found || entry.change < found.change) found = { change: entry.change, date: entry.date };
   return found;
+}
+
+/**
+ * Change from the last close of the previous year to the latest close (the year of the latest
+ * close counts as this year). `null` when the history doesn't reach back before 1 January.
+ */
+export function yearToDate(series: PriceSeries): number | null {
+  const last = series.dates.length - 1;
+  if (last < 1) return null;
+  const startOfYear = `${series.dates[last].slice(0, 4)}-01-01`;
+  let base = -1;
+  for (let index = last; index >= 0; index -= 1) {
+    if (series.dates[index] < startOfYear) {
+      base = index;
+      break;
+    }
+  }
+  if (base < 0 || series.closes[base] <= 0) return null;
+  return series.closes[last] / series.closes[base] - 1;
+}
+
+/**
+ * This year's change for the stocks held now: today's value against what the same shares were
+ * worth at the start of the year. Stocks without a year-to-date figure are left out.
+ */
+export function portfolioYearToDate(stocks: Pick<StockRisk, 'value' | 'ytd'>[]): number | null {
+  let now = 0;
+  let start = 0;
+  for (const stock of stocks) {
+    if (stock.ytd === null || stock.ytd <= -1) continue;
+    now += stock.value;
+    start += stock.value / (1 + stock.ytd);
+  }
+  return start > 0 ? now / start - 1 : null;
 }
 
 /**
@@ -277,6 +316,7 @@ export function analyseRisk(holdings: RiskHolding[], benchmark: PriceSeries | nu
         series[index].dates,
       ),
       worstDay: own.length >= MIN_DAYS ? worst(own) : null,
+      ytd: yearToDate(holding.series),
       benchmarkCorrelation: benchAligned && benchReturns ? correlation(benchAligned.returns[index], benchReturns) : null,
       riskShare: portfolioVariance > 0 && covar.n >= MIN_DAYS ? (weights[index] * covar.value) / portfolioVariance : null,
       days: own.length,
@@ -316,6 +356,8 @@ export function analyseRisk(holdings: RiskHolding[], benchmark: PriceSeries | nu
       portfolioReturns.length >= MIN_DAYS
         ? worst(portfolioDays.map((date, index) => ({ date, change: portfolioReturns[index] })))
         : null,
+    portfolioYtd: portfolioYearToDate(stocks),
+    benchmarkYtd: benchmark ? yearToDate(benchmark) : null,
     correlations,
     averageCorrelation: pairs.length > 0 ? mean(pairs) : null,
     from: portfolioDays[0] ?? '',
@@ -333,4 +375,42 @@ export function correlationPairs(report: Pick<RiskReport, 'stocks' | 'correlatio
     }
   });
   return pairs.sort((left, right) => right.correlation - left.correlation);
+}
+
+export type VolatilitySortKey = 'stock' | 'value' | 'weight' | 'volatility' | 'ytd' | 'benchmark' | 'riskShare';
+
+export interface VolatilitySort {
+  key: VolatilitySortKey;
+  direction: 'asc' | 'desc';
+}
+
+export const DEFAULT_VOLATILITY_SORT: VolatilitySort = { key: 'volatility', direction: 'desc' };
+
+export function isVolatilitySort(value: unknown): value is VolatilitySort {
+  if (!value || typeof value !== 'object') return false;
+  const { key, direction } = value as Record<string, unknown>;
+  return (
+    (typeof key === 'string' && ['stock', 'value', 'weight', 'volatility', 'ytd', 'benchmark', 'riskShare'].includes(key)) && (direction === 'asc' || direction === 'desc')
+  );
+}
+
+/** Order the Volatility table. Stocks without a figure in the sorted column go last either way round; ties go by name. */
+export function sortStockRisks(stocks: StockRisk[], sort: VolatilitySort): StockRisk[] {
+  const sign = sort.direction === 'asc' ? 1 : -1;
+  const byName = (a: StockRisk, b: StockRisk) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+  return [...stocks].sort((a, b) => {
+    if (sort.key === 'stock') return sign * byName(a, b);
+    if (sort.key !== 'value' && sort.key !== 'weight') {
+      const field = sort.key === 'benchmark' ? 'benchmarkCorrelation' : sort.key;
+      const left = a[field];
+      const right = b[field];
+      if (left === null || right === null) {
+        if (left !== right) return left === null ? 1 : -1;
+        return byName(a, b);
+      }
+      return sign * (left - right) || byName(a, b);
+    }
+    // Weight is value over the total, so both sort the same way.
+    return sign * (a.value - b.value) || byName(a, b);
+  });
 }

@@ -1,10 +1,11 @@
-import { Activity, Link2, RefreshCw, Shuffle, TrendingDown } from 'lucide-react';
+import { Activity, ArrowDown, ArrowUp, ArrowUpDown, Link2, RefreshCw, Shuffle, TrendingDown, TrendingUp } from 'lucide-react';
 import { useMemo, type ComponentType, type CSSProperties } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { usePriceHistory } from '@/hooks/usePriceHistory';
 import { formatWhole, type Holding } from '@/lib/portfolio';
 import { quoteSymbolFor, yahooSymbolFor, type PriceSettings, type ResolvedPrice } from '@/lib/prices';
@@ -12,10 +13,15 @@ import {
   analyseRisk,
   convertSeries,
   correlationPairs,
+  DEFAULT_VOLATILITY_SORT,
+  isVolatilitySort,
+  sortStockRisks,
   fxSymbolFor,
   type PriceSeries,
   type RiskHolding,
   type StockRisk,
+  type VolatilitySort,
+  type VolatilitySortKey,
 } from '@/lib/risk';
 import { cn } from '@/lib/utils';
 
@@ -41,6 +47,11 @@ function yahooSymbol(symbol: string, settings: PriceSettings): string {
 
 function percent(value: number | null, decimals = 1): string {
   return value === null ? '—' : `${(value * 100).toFixed(decimals)}%`;
+}
+
+function gainClass(value: number): string {
+  if (Math.abs(value) < 0.0005) return 'text-muted-foreground';
+  return value > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400';
 }
 
 function signedPercent(value: number, decimals = 1): string {
@@ -108,6 +119,47 @@ function Stat({ label, value, hint, icon: Icon, iconClass }: StatProps) {
   );
 }
 
+/** A column heading that sorts by its column; flips direction on each click. Names start A to Z, numbers largest first. */
+function SortableHead({
+  label,
+  sortKey,
+  sort,
+  onSortChange,
+  className,
+}: {
+  label: string;
+  sortKey: VolatilitySortKey;
+  sort: VolatilitySort;
+  onSortChange: (sort: VolatilitySort) => void;
+  className?: string;
+}) {
+  const active = sort.key === sortKey;
+  const first = sortKey === 'stock' ? 'asc' : 'desc';
+  const next: VolatilitySort = {
+    key: sortKey,
+    direction: active ? (sort.direction === 'asc' ? 'desc' : 'asc') : first,
+  };
+  return (
+    <TableHead className={className} aria-sort={active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button
+        type="button"
+        onClick={() => onSortChange(next)}
+        className={cn(
+          'inline-flex items-center gap-1 rounded-sm text-inherit transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+          active ? 'text-foreground' : 'text-muted-foreground',
+        )}
+      >
+        {label}
+        {active ? (
+          sort.direction === 'asc' ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />
+        ) : (
+          <ArrowUpDown className="size-3 opacity-40" />
+        )}
+      </button>
+    </TableHead>
+  );
+}
+
 function VolatilityCell({ stock }: { stock: StockRisk }) {
   if (stock.volatility === null) return <span className="text-muted-foreground">—</span>;
   return (
@@ -124,20 +176,22 @@ function VolatilityCell({ stock }: { stock: StockRisk }) {
  * closes fetched through the price relay.
  */
 export function RiskAnalysis({ holdings, prices, priceSettings, currency, names }: RiskAnalysisProps) {
-  // One entry per stock, all accounts together.
+  // One entry per stock, all accounts together. Ledger symbols that fetch the same Yahoo price
+  // (e.g. `VOD.L` and `LON:VOD`) are the same stock, so they're combined too.
   const stocks = useMemo(() => {
-    const bySymbol = new Map<string, { symbol: string; name: string; quantity: number; yahoo: string }>();
+    const byYahoo = new Map<string, { symbol: string; name: string; yahoo: string; parts: Map<string, number> }>();
     for (const holding of holdings) {
-      const entry = bySymbol.get(holding.symbol) ?? {
-        symbol: holding.symbol,
+      const yahoo = yahooSymbol(holding.symbol, priceSettings);
+      const entry = byYahoo.get(yahoo) ?? {
+        symbol: yahoo,
         name: names.get(holding.symbol) || holding.name || holding.symbol,
-        quantity: 0,
-        yahoo: yahooSymbol(holding.symbol, priceSettings),
+        yahoo,
+        parts: new Map<string, number>(),
       };
-      entry.quantity += holding.quantity;
-      bySymbol.set(holding.symbol, entry);
+      entry.parts.set(holding.symbol, (entry.parts.get(holding.symbol) ?? 0) + holding.quantity);
+      byYahoo.set(yahoo, entry);
     }
-    return [...bySymbol.values()];
+    return [...byYahoo.values()];
   }, [holdings, names, priceSettings]);
 
   const historySymbols = useMemo(
@@ -159,8 +213,16 @@ export function RiskAnalysis({ holdings, prices, priceSettings, currency, names 
     const unpricedNames: string[] = [];
     const missingNames: string[] = [];
     for (const stock of stocks) {
-      const price = prices[stock.symbol]?.price;
-      if (price === null || price === undefined) {
+      // Each ledger symbol at its own latest price; ones without a price are left out of the value.
+      let value = 0;
+      let priced = false;
+      for (const [symbol, quantity] of stock.parts) {
+        const price = prices[symbol]?.price;
+        if (price === null || price === undefined) continue;
+        value += price * quantity;
+        priced = true;
+      }
+      if (!priced) {
         unpricedNames.push(stock.name);
         continue;
       }
@@ -169,15 +231,14 @@ export function RiskAnalysis({ holdings, prices, priceSettings, currency, names 
         missingNames.push(stock.name);
         continue;
       }
-      input.push({ symbol: stock.symbol, name: stock.name, value: price * stock.quantity, series });
+      input.push({ symbol: stock.symbol, name: stock.name, value, series });
     }
     return { report: analyseRisk(input, inCurrency(BENCHMARK)), unpriced: unpricedNames, missing: missingNames };
   }, [stocks, prices, history.series, currency]);
 
-  const byVolatility = useMemo(
-    () => [...report.stocks].sort((a, b) => (b.volatility ?? -1) - (a.volatility ?? -1) || a.name.localeCompare(b.name)),
-    [report.stocks],
-  );
+  const [storedSort, setSort] = useLocalStorage<VolatilitySort>('stock-ledger:volatility-sort', DEFAULT_VOLATILITY_SORT);
+  const sort = isVolatilitySort(storedSort) ? storedSort : DEFAULT_VOLATILITY_SORT;
+  const byVolatility = useMemo(() => sortStockRisks(report.stocks, sort), [report.stocks, sort]);
   const grid = useMemo(() => {
     const order = report.stocks
       .map((stock, index) => ({ stock, index }))
@@ -187,10 +248,6 @@ export function RiskAnalysis({ holdings, prices, priceSettings, currency, names 
   }, [report.stocks]);
   const pairs = useMemo(() => correlationPairs(report), [report]);
   const nameOf = useMemo(() => new Map(report.stocks.map((stock) => [stock.symbol, stock.name])), [report.stocks]);
-  const topRisk = useMemo(
-    () => [...report.stocks].filter((stock) => stock.riskShare !== null).sort((a, b) => (b.riskShare ?? 0) - (a.riskShare ?? 0))[0],
-    [report.stocks],
-  );
 
   const fetchedAt = Math.max(0, ...historySymbols.map((symbol) => history.series[symbol]?.fetchedAt ?? 0));
   const failed = historySymbols.filter((symbol) => history.errors[symbol] && !history.series[symbol]);
@@ -294,15 +351,19 @@ export function RiskAnalysis({ holdings, prices, priceSettings, currency, names 
               iconClass="bg-orange-500/10 text-orange-600 dark:text-orange-400"
             />
             <Stat
-              label="Worst day"
-              value={report.portfolioWorstDay ? signedPercent(report.portfolioWorstDay.change) : '—'}
+              label="Year to date"
+              value={report.portfolioYtd !== null ? signedPercent(report.portfolioYtd) : '—'}
               hint={
-                report.portfolioWorstDay
-                  ? `${shortDate(report.portfolioWorstDay.date)}${topRisk ? `. Most of the swings: ${topRisk.name} (${percent(topRisk.riskShare, 0)})` : ''}`
-                  : 'Largest one-day fall in the last year'
+                report.portfolioYtd !== null
+                  ? `Your current stocks since 1 Jan${report.benchmarkYtd !== null ? `. ${BENCHMARK_NAME}: ${signedPercent(report.benchmarkYtd)}` : ''}`
+                  : 'Change since 1 January'
               }
-              icon={TrendingDown}
-              iconClass="bg-rose-500/10 text-rose-600 dark:text-rose-400"
+              icon={report.portfolioYtd !== null && report.portfolioYtd < 0 ? TrendingDown : TrendingUp}
+              iconClass={
+                report.portfolioYtd !== null && report.portfolioYtd < 0
+                  ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                  : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+              }
             />
           </div>
 
@@ -310,7 +371,7 @@ export function RiskAnalysis({ holdings, prices, priceSettings, currency, names 
             <CardHeader className="border-b px-5 py-4">
               <CardTitle className="text-base">Volatility</CardTitle>
               <CardDescription>
-                How much each stock swings in a year, most volatile first. Share of swings is how much of the portfolio's
+                How much each stock swings in a year. Click a heading to sort. Share of swings is how much of the portfolio's
                 ups and downs come from that stock, which depends on its size as well as its volatility.
               </CardDescription>
             </CardHeader>
@@ -319,13 +380,13 @@ export function RiskAnalysis({ holdings, prices, priceSettings, currency, names 
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="pl-5">Stock</TableHead>
-                      <TableHead className="text-right">Value</TableHead>
-                      <TableHead className="text-right">Weight</TableHead>
-                      <TableHead className="text-right">Volatility</TableHead>
-                      <TableHead className="text-right">Worst day</TableHead>
-                      <TableHead className="text-right">With {BENCHMARK_NAME}</TableHead>
-                      <TableHead className="pr-5 text-right">Share of swings</TableHead>
+                      <SortableHead label="Stock" sortKey="stock" sort={sort} onSortChange={setSort} className="pl-5" />
+                      <SortableHead label="Value" sortKey="value" sort={sort} onSortChange={setSort} className="text-right" />
+                      <SortableHead label="Weight" sortKey="weight" sort={sort} onSortChange={setSort} className="text-right" />
+                      <SortableHead label="Volatility" sortKey="volatility" sort={sort} onSortChange={setSort} className="text-right" />
+                      <SortableHead label="YTD" sortKey="ytd" sort={sort} onSortChange={setSort} className="text-right" />
+                      <SortableHead label={`With ${BENCHMARK_NAME}`} sortKey="benchmark" sort={sort} onSortChange={setSort} className="text-right" />
+                      <SortableHead label="Share of swings" sortKey="riskShare" sort={sort} onSortChange={setSort} className="pr-5 text-right" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -343,11 +404,8 @@ export function RiskAnalysis({ holdings, prices, priceSettings, currency, names 
                           <VolatilityCell stock={stock} />
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {stock.worstDay ? (
-                            <span className="whitespace-nowrap">
-                              <span className="text-rose-600 dark:text-rose-400">{signedPercent(stock.worstDay.change)}</span>{' '}
-                              <span className="text-xs text-muted-foreground">{shortDate(stock.worstDay.date)}</span>
-                            </span>
+                          {stock.ytd !== null ? (
+                            <span className={gainClass(stock.ytd)}>{signedPercent(stock.ytd)}</span>
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}
