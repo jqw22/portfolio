@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { alignedReturns, analyseRisk, convertSeries, correlation, correlationPairs, fxSymbolFor, type PriceSeries } from './risk';
+import { alignedReturns, analyseRisk, sortStockRisks, type StockRisk, convertSeries, correlation, correlationPairs, fxSymbolFor, type PriceSeries } from './risk';
 
 /** Weekday dates from 2026-01-05 onwards. */
 function weekdays(count: number): string[] {
@@ -111,5 +111,31 @@ describe('analyseRisk', () => {
     const report = analyseRisk([{ symbol: 'A', name: 'A', value: 1, series: series(returns, 'GBP', dates) }], null);
     // The wild early months are more than a year before the last price.
     expect(report.stocks[0].volatility).toBeLessThan(0.1);
+  });
+});
+
+describe('sortStockRisks', () => {
+  const stock = (name: string, value: number, volatility: number | null) =>
+    ({ symbol: name, name, value, weight: 0, volatility, worstDay: null, ytd: null, benchmarkCorrelation: null, riskShare: null, days: 0 }) as StockRisk;
+  const stocks = [stock('beta', 300, 0.2), stock('Alpha', 100, null), stock('Gamma', 200, 0.4)];
+  const names = (list: StockRisk[]) => list.map((s) => s.name);
+
+  it('sorts by name, value or volatility, keeping missing volatility last', () => {
+    expect(names(sortStockRisks(stocks, { key: 'stock', direction: 'asc' }))).toEqual(['Alpha', 'beta', 'Gamma']);
+    expect(names(sortStockRisks(stocks, { key: 'value', direction: 'desc' }))).toEqual(['beta', 'Gamma', 'Alpha']);
+    expect(names(sortStockRisks(stocks, { key: 'weight', direction: 'asc' }))).toEqual(['Alpha', 'Gamma', 'beta']);
+    expect(names(sortStockRisks(stocks, { key: 'volatility', direction: 'desc' }))).toEqual(['Gamma', 'beta', 'Alpha']);
+    expect(names(sortStockRisks(stocks, { key: 'volatility', direction: 'asc' }))).toEqual(['beta', 'Gamma', 'Alpha']);
+  });
+});
+
+describe('yearToDate', () => {
+  it('compares the latest close with the last close of last year', async () => {
+    const { yearToDate, portfolioYearToDate } = await import('./risk');
+    const s: PriceSeries = { currency: 'GBP', dates: ['2025-12-30', '2025-12-31', '2026-01-02', '2026-11-20'], closes: [90, 100, 101, 120] };
+    expect(yearToDate(s)).toBeCloseTo(0.2);
+    expect(yearToDate({ ...s, dates: s.dates.slice(2), closes: s.closes.slice(2) })).toBeNull();
+    // £120 now from £100 at +20% and £50 now from £100 at -50%: £170 from £200.
+    expect(portfolioYearToDate([{ value: 120, ytd: 0.2 }, { value: 50, ytd: -0.5 }, { value: 10, ytd: null }])).toBeCloseTo(-0.15);
   });
 });
