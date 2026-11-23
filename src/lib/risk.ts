@@ -377,7 +377,7 @@ export function correlationPairs(report: Pick<RiskReport, 'stocks' | 'correlatio
   return pairs.sort((left, right) => right.correlation - left.correlation);
 }
 
-export type VolatilitySortKey = 'stock' | 'value' | 'weight' | 'volatility' | 'ytd';
+export type VolatilitySortKey = 'stock' | 'value' | 'weight' | 'volatility' | 'ytd' | 'benchmark' | 'riskShare';
 
 export interface VolatilitySort {
   key: VolatilitySortKey;
@@ -390,19 +390,20 @@ export function isVolatilitySort(value: unknown): value is VolatilitySort {
   if (!value || typeof value !== 'object') return false;
   const { key, direction } = value as Record<string, unknown>;
   return (
-    (key === 'stock' || key === 'value' || key === 'weight' || key === 'volatility' || key === 'ytd') && (direction === 'asc' || direction === 'desc')
+    (typeof key === 'string' && ['stock', 'value', 'weight', 'volatility', 'ytd', 'benchmark', 'riskShare'].includes(key)) && (direction === 'asc' || direction === 'desc')
   );
 }
 
-/** Order the Volatility table. Stocks without a volatility or year-to-date figure go last either way round; ties go by name. */
+/** Order the Volatility table. Stocks without a figure in the sorted column go last either way round; ties go by name. */
 export function sortStockRisks(stocks: StockRisk[], sort: VolatilitySort): StockRisk[] {
   const sign = sort.direction === 'asc' ? 1 : -1;
   const byName = (a: StockRisk, b: StockRisk) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
   return [...stocks].sort((a, b) => {
     if (sort.key === 'stock') return sign * byName(a, b);
-    if (sort.key === 'volatility' || sort.key === 'ytd') {
-      const left = a[sort.key];
-      const right = b[sort.key];
+    if (sort.key !== 'value' && sort.key !== 'weight') {
+      const field = sort.key === 'benchmark' ? 'benchmarkCorrelation' : sort.key;
+      const left = a[field];
+      const right = b[field];
       if (left === null || right === null) {
         if (left !== right) return left === null ? 1 : -1;
         return byName(a, b);

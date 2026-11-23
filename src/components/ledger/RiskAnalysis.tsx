@@ -385,8 +385,8 @@ export function RiskAnalysis({ holdings, prices, priceSettings, currency, names 
                       <SortableHead label="Weight" sortKey="weight" sort={sort} onSortChange={setSort} className="text-right" />
                       <SortableHead label="Volatility" sortKey="volatility" sort={sort} onSortChange={setSort} className="text-right" />
                       <SortableHead label="YTD" sortKey="ytd" sort={sort} onSortChange={setSort} className="text-right" />
-                      <TableHead className="text-right">With {BENCHMARK_NAME}</TableHead>
-                      <TableHead className="pr-5 text-right">Share of swings</TableHead>
+                      <SortableHead label={`With ${BENCHMARK_NAME}`} sortKey="benchmark" sort={sort} onSortChange={setSort} className="text-right" />
+                      <SortableHead label="Share of swings" sortKey="riskShare" sort={sort} onSortChange={setSort} className="pr-5 text-right" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>

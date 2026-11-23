@@ -126,6 +126,9 @@ describe('sortStockRisks', () => {
     expect(names(sortStockRisks(stocks, { key: 'weight', direction: 'asc' }))).toEqual(['Alpha', 'Gamma', 'beta']);
     expect(names(sortStockRisks(stocks, { key: 'volatility', direction: 'desc' }))).toEqual(['Gamma', 'beta', 'Alpha']);
     expect(names(sortStockRisks(stocks, { key: 'volatility', direction: 'asc' }))).toEqual(['beta', 'Gamma', 'Alpha']);
+    const shares = stocks.map((s, i) => ({ ...s, riskShare: [0.5, 0.1, null][i], benchmarkCorrelation: [0.2, 0.6, 0.4][i] }));
+    expect(names(sortStockRisks(shares, { key: 'riskShare', direction: 'desc' }))).toEqual(['beta', 'Alpha', 'Gamma']);
+    expect(names(sortStockRisks(shares, { key: 'benchmark', direction: 'desc' }))).toEqual(['Alpha', 'Gamma', 'beta']);
   });
 });
 
