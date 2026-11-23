@@ -88,6 +88,8 @@ export interface Ledger {
   accountNotes: Record<string, Record<string, string>>;
   /** Stocks the user is watching but may not own, in the order they were added. */
   watchlist: WatchItem[];
+  /** Labels for watched stocks, kept apart from trade labels, in creation order. */
+  watchLabels: string[];
 }
 
 /** A stock on the watchlist. */
@@ -100,6 +102,8 @@ export interface WatchItem {
   addedOn: string;
   /** Price to watch for, in the ledger currency. */
   triggerPrice?: number;
+  /** One of the ledger's `watchLabels`. */
+  label?: string;
 }
 
 /**
@@ -358,6 +362,8 @@ export function parseWatchlist(value: unknown): WatchItem[] {
     const name = typeof record.name === 'string' ? record.name.trim().slice(0, WATCH_NAME_MAX_LENGTH).trim() : '';
     const addedOn = (typeof record.addedOn === 'string' ? normalizeDate(record.addedOn) : null) ?? todayIso();
     const item: WatchItem = { symbol, name: name || undefined, addedOn };
+    const label = normalizeLabel(record.label);
+    if (label) item.label = label;
     const trigger = record.triggerPrice;
     if (typeof trigger === 'number' && Number.isFinite(trigger) && trigger > 0) {
       item.triggerPrice = trigger;
@@ -400,6 +406,49 @@ export function restoreWatchItem(ledger: Ledger, item: WatchItem): Ledger {
   const [clean] = parseWatchlist([item]);
   if (!clean || ledger.watchlist.some((entry) => entry.symbol === clean.symbol)) return ledger;
   return { ...ledger, watchlist: [...ledger.watchlist, clean] };
+}
+
+/** Give a watched stock a label from `watchLabels`, or clear it with `undefined`. */
+export function setWatchLabel(ledger: Ledger, symbol: string, label: string | undefined): Ledger {
+  const key = symbol.trim().toUpperCase();
+  const stored = label ? findLabel(ledger.watchLabels, label) : undefined;
+  return {
+    ...ledger,
+    watchlist: ledger.watchlist.map((item) => {
+      if (item.symbol !== key) return item;
+      const { label: _previous, ...rest } = item;
+      return stored ? { ...rest, label: stored } : rest;
+    }),
+  };
+}
+
+/** Delete a watchlist label and clear it from every watched stock that has it. */
+export function removeWatchLabel(ledger: Ledger, label: string): Ledger {
+  const key = label.toLowerCase();
+  return {
+    ...ledger,
+    watchLabels: ledger.watchLabels.filter((entry) => entry.toLowerCase() !== key),
+    watchlist: ledger.watchlist.map((item) => {
+      if (item.label?.toLowerCase() !== key) return item;
+      const { label: _removed, ...rest } = item;
+      return rest;
+    }),
+  };
+}
+
+/** By name, or by label with unlabelled stocks last (ties by name), like the holdings tables. */
+export function sortWatchlist(items: WatchItem[], sort: HoldingSort): WatchItem[] {
+  const text = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
+  const byName = (a: WatchItem, b: WatchItem) => text(a.name?.trim() || a.symbol, b.name?.trim() || b.symbol);
+  const sign = sort.direction === 'asc' ? 1 : -1;
+  return [...items].sort((a, b) => {
+    if (sort.key === 'stock') return sign * byName(a, b);
+    if (!a.label || !b.label) {
+      if (a.label !== b.label) return a.label ? -1 : 1;
+      return byName(a, b);
+    }
+    return sign * text(a.label, b.label) || byName(a, b);
+  });
 }
 
 /** Take a stock off the watchlist. */
@@ -805,8 +854,8 @@ export function parseCashMovements(value: unknown): CashMovement[] {
 
 /**
  * Coerce a stored payload into a `Ledger`. Accepts the current
- * `{ transactions, cash, labels, accounts, stockNotes, accountNotes, watchlist }` object (older ones lack
- * `accountNotes`, `watchlist`, `stockNotes`, `cash`, `labels` or `accounts`) as well as the original bare transaction array.
+ * `{ transactions, cash, labels, accounts, stockNotes, accountNotes, watchlist, watchLabels }` object (older ones lack
+ * `watchLabels`, `accountNotes`, `watchlist`, `stockNotes`, `cash`, `labels` or `accounts`) as well as the original bare transaction array.
  * Labels and accounts used by entries but missing from their lists are added.
  */
 export function parseLedger(value: unknown): Ledger {
@@ -817,6 +866,7 @@ export function parseLedger(value: unknown): Ledger {
   let rawStockNotes: unknown = {};
   let rawAccountNotes: unknown;
   let rawWatchlist: unknown = [];
+  let rawWatchLabels: unknown = [];
   if (!Array.isArray(value) && typeof value === 'object' && value !== null) {
     const record = value as Record<string, unknown>;
     rawTransactions = record.transactions;
@@ -826,6 +876,7 @@ export function parseLedger(value: unknown): Ledger {
     rawStockNotes = record.stockNotes;
     rawAccountNotes = record.accountNotes;
     rawWatchlist = record.watchlist;
+    rawWatchLabels = record.watchLabels;
   }
   const parsed = parseTransactions(rawTransactions);
   const parsedCash = parseCashMovements(rawCash);
@@ -849,6 +900,14 @@ export function parseLedger(value: unknown): Ledger {
     entry.account ? { ...entry, account: findLabel(accounts, entry.account) } : entry,
   );
   const stockNotes = parseStockNotes(rawStockNotes);
+  const parsedWatchlist = parseWatchlist(rawWatchlist);
+  const watchLabels = mergeLabels(
+    Array.isArray(rawWatchLabels) ? rawWatchLabels : [],
+    parsedWatchlist.map((item) => item.label),
+  );
+  const watchlist = parsedWatchlist.map((item) =>
+    item.label ? { ...item, label: findLabel(watchLabels, item.label) } : item,
+  );
   return {
     transactions,
     cash,
@@ -860,6 +919,7 @@ export function parseLedger(value: unknown): Ledger {
       rawAccountNotes === undefined
         ? accountNotesFromStockNotes(stockNotes, transactions)
         : parseAccountNotes(rawAccountNotes, accounts),
-    watchlist: parseWatchlist(rawWatchlist),
+    watchlist,
+    watchLabels,
   };
 }

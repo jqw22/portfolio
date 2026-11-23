@@ -6,12 +6,16 @@ import {
   parseLedger,
   parseWatchlist,
   removeFromWatchlist,
+  removeWatchLabel,
   restoreWatchItem,
+  setWatchLabel,
+  sortWatchlist,
   setWatchTrigger,
   type Ledger,
+  type WatchItem,
 } from './portfolio';
 
-const empty: Ledger = { transactions: [], cash: [], labels: [], accounts: [], stockNotes: {}, accountNotes: {}, watchlist: [] };
+const empty: Ledger = { transactions: [], cash: [], labels: [], accounts: [], stockNotes: {}, accountNotes: {}, watchlist: [], watchLabels: [] };
 
 describe('watchlist', () => {
   it('adds a stock with an upper-cased symbol and today as the date', () => {
@@ -97,5 +101,55 @@ describe('watchlist', () => {
     expect(formatShortDate('2026-11-23')).toBe('23/11/26');
     expect(formatShortDate('2026-01-05')).toBe('05/01/26');
     expect(formatShortDate('')).toBe('—');
+  });
+
+  it('labels watched stocks from the watchlist labels only', () => {
+    let ledger: Ledger = { ...addToWatchlist(addToWatchlist(empty, 'AAPL'), 'MSFT'), watchLabels: ['Buy dip'] };
+    ledger = setWatchLabel(ledger, 'aapl', 'buy DIP');
+    expect(ledger.watchlist[0].label).toBe('Buy dip');
+    // A label that isn't in the list is not set.
+    expect(setWatchLabel(ledger, 'MSFT', 'Other').watchlist[1].label).toBeUndefined();
+    expect(setWatchLabel(ledger, 'AAPL', undefined).watchlist[0].label).toBeUndefined();
+  });
+
+  it('deleting a watchlist label clears it from every stock', () => {
+    const ledger: Ledger = {
+      ...empty,
+      watchLabels: ['Tech', 'Banks'],
+      watchlist: [
+        { symbol: 'AAPL', addedOn: '2026-11-01', label: 'Tech' },
+        { symbol: 'HSBA.L', addedOn: '2026-11-01', label: 'Banks' },
+      ],
+    };
+    const next = removeWatchLabel(ledger, 'tech');
+    expect(next.watchLabels).toEqual(['Banks']);
+    expect(next.watchlist.map((item) => item.label)).toEqual([undefined, 'Banks']);
+  });
+
+  it('reads watchlist labels and adds any missing from the list', () => {
+    const ledger = parseLedger({
+      version: 8,
+      watchLabels: ['Tech'],
+      watchlist: [
+        { symbol: 'AAPL', addedOn: '2026-11-01', label: 'tech' },
+        { symbol: 'HSBA.L', addedOn: '2026-11-01', label: 'Banks' },
+      ],
+    });
+    expect(ledger.watchLabels).toEqual(['Tech', 'Banks']);
+    expect(ledger.watchlist.map((item) => item.label)).toEqual(['Tech', 'Banks']);
+    expect(parseLedger({ version: 7 }).watchLabels).toEqual([]);
+  });
+
+  it('sorts by name or by label with unlabelled last', () => {
+    const items: WatchItem[] = [
+      { symbol: 'C', name: 'Cherry', addedOn: '2026-11-01' },
+      { symbol: 'B', name: 'Banana', addedOn: '2026-11-01', label: 'Zed' },
+      { symbol: 'A', name: 'Apple', addedOn: '2026-11-01', label: 'Alpha' },
+      { symbol: 'D', name: 'Date', addedOn: '2026-11-01', label: 'Alpha' },
+    ];
+    const names = (list: WatchItem[]) => list.map((item) => item.name);
+    expect(names(sortWatchlist(items, { key: 'stock', direction: 'asc' }))).toEqual(['Apple', 'Banana', 'Cherry', 'Date']);
+    expect(names(sortWatchlist(items, { key: 'label', direction: 'asc' }))).toEqual(['Apple', 'Date', 'Banana', 'Cherry']);
+    expect(names(sortWatchlist(items, { key: 'label', direction: 'desc' }))).toEqual(['Banana', 'Apple', 'Date', 'Cherry']);
   });
 });

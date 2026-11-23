@@ -152,6 +152,10 @@ export default function Index() {
     removeWatch,
     restoreWatch,
     setWatchTrigger,
+    watchLabels,
+    addWatchLabel,
+    deleteWatchLabel,
+    setWatchLabel,
     refresh,
   } = useStockTransactions();
   const { toast } = useToast();
@@ -161,6 +165,8 @@ export default function Index() {
   const holdingSort = isHoldingSort(storedSort) ? storedSort : DEFAULT_HOLDING_SORT;
   const [storedGrouped, setGroupByAccount] = useLocalStorage<boolean>('stock-ledger:holdings-grouped', true);
   const groupHoldings = storedGrouped !== false;
+  const [storedWatchSort, setWatchSort] = useLocalStorage<HoldingSort>('stock-ledger:watchlist-sort', DEFAULT_HOLDING_SORT);
+  const watchSort = isHoldingSort(storedWatchSort) ? storedWatchSort : DEFAULT_HOLDING_SORT;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [editingCash, setEditingCash] = useState<CashMovement | null>(null);
@@ -457,7 +463,7 @@ export default function Index() {
         canSync={canSync}
       >
         <DataMenu
-          ledger={{ transactions, cash, labels, accounts: savedAccounts, stockNotes, accountNotes, watchlist }}
+          ledger={{ transactions, cash, labels, accounts: savedAccounts, stockNotes, accountNotes, watchlist, watchLabels }}
           onRequestImport={() => fileInputRef.current?.click()}
           onLoadSample={handleLoadSample}
           onReset={() => {
@@ -652,6 +658,13 @@ export default function Index() {
                     onAdd={handleAddWatch}
                     onRemove={handleRemoveWatch}
                     onTriggerChange={setWatchTrigger}
+                    labels={watchLabels}
+                    onLabelChange={setWatchLabel}
+                    onCreateLabel={addWatchLabel}
+                    onDeleteLabel={deleteWatchLabel}
+                    sort={watchSort}
+                    onSortChange={setWatchSort}
+                    lastRefreshAt={lastRefreshAt}
                   />
                 </TabsContent>
 

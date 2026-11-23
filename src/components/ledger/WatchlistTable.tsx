@@ -1,7 +1,8 @@
 import { useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Eye, Plus, Trash2 } from 'lucide-react';
 
-import { LatestPriceCell } from '@/components/ledger/HoldingsTable';
+import { SortableHead } from '@/components/ledger/HoldingsTable';
+import { LabelPicker } from '@/components/ledger/LabelPicker';
 import { missingDayChangeReason, pnlClass } from '@/components/ledger/marketText';
 import { StockNoteButton } from '@/components/ledger/StockNoteButton';
 import { YahooLinkButton } from '@/components/ledger/YahooLinkButton';
@@ -14,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { ResolvedPrice } from '@/lib/prices';
 import { cn } from '@/lib/utils';
-import { formatCurrency, formatPercent, formatShortDate, parseNumber, type WatchItem } from '@/lib/portfolio';
+import { formatCurrency, formatPercent, parseNumber, sortWatchlist, type HoldingSort, type WatchItem } from '@/lib/portfolio';
 
 interface WatchlistTableProps {
   items: WatchItem[];
@@ -31,16 +32,37 @@ interface WatchlistTableProps {
   onRemove: (item: WatchItem) => void;
   /** Set or clear a trigger price. */
   onTriggerChange: (symbol: string, triggerPrice: number | undefined) => void;
+  /** Labels for watched stocks. */
+  labels: string[];
+  onLabelChange: (symbol: string, label: string | undefined) => void;
+  onCreateLabel: (label: string) => string | undefined;
+  onDeleteLabel: (label: string) => void;
+  sort: HoldingSort;
+  onSortChange: (sort: HoldingSort) => void;
+  /** When prices were last fetched (ms since epoch), or 0. */
+  lastRefreshAt: number;
 }
 
 function displayName(item: WatchItem): string {
   return item.name?.trim() || item.symbol;
 }
 
-/** Sorted by name, like the holdings tables. */
-function sortItems(items: WatchItem[]): WatchItem[] {
-  return [...items].sort((a, b) =>
-    displayName(a).localeCompare(displayName(b), undefined, { sensitivity: 'base', numeric: true }),
+/** The latest price on its own; hover shows the quote and when it was fetched. */
+function PriceCell({ price, currency }: { price: ResolvedPrice | null | undefined; currency: string }) {
+  if (!price) return <span className="text-muted-foreground">No price</span>;
+  const when = price.updatedAt ? new Date(price.updatedAt).toLocaleString() : 'unknown';
+  const title = price.source === 'manual' ? `Entered by hand on ${when}` : `Fetched ${when}`;
+  if (price.price === null) {
+    return (
+      <span className="text-muted-foreground" title={`No ${currency} exchange rate. ${title}`}>
+        No {currency} rate
+      </span>
+    );
+  }
+  return (
+    <span className="font-medium" title={title}>
+      {formatCurrency(price.price, currency)}
+    </span>
   );
 }
 
@@ -85,8 +107,8 @@ function triggerText(value: number | undefined): string {
 
 /**
  * An editable trigger price. Saved on Enter or when the box loses focus; Escape
- * puts the saved value back; clearing the box removes the trigger. Below it:
- * how far the latest price is from it.
+ * puts the saved value back; clearing the box removes the trigger. To its
+ * right: how far the latest price is from it.
  */
 function TriggerCell({
   item,
@@ -140,8 +162,18 @@ function TriggerCell({
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <div className="w-28">
+    <div className="flex items-center justify-end gap-2">
+      {status ? (
+        <span
+          className="order-2 w-24 shrink-0 text-left text-xs whitespace-nowrap text-muted-foreground"
+          title="How far the latest price has to move to reach the trigger"
+        >
+          {status}
+        </span>
+      ) : (
+        <span className="order-2 w-24 shrink-0" aria-hidden />
+      )}
+      <div className="order-1 w-24">
         <Input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
@@ -153,11 +185,6 @@ function TriggerCell({
           className="h-8 text-right tabular-nums"
         />
       </div>
-      {status ? (
-        <span className="text-xs text-muted-foreground" title="How far the latest price has to move to reach the trigger">
-          {status}
-        </span>
-      ) : null}
     </div>
   );
 }
@@ -174,6 +201,13 @@ export function WatchlistTable({
   onAdd,
   onRemove,
   onTriggerChange,
+  labels,
+  onLabelChange,
+  onCreateLabel,
+  onDeleteLabel,
+  sort,
+  onSortChange,
+  lastRefreshAt,
 }: WatchlistTableProps) {
   const [symbol, setSymbol] = useState('');
   const [name, setName] = useState('');
@@ -197,7 +231,9 @@ export function WatchlistTable({
     setNameTouched(false);
   };
 
-  const rows = sortItems(items);
+  const rows = sortWatchlist(items, sort);
+  const labelUsage: Record<string, number> = {};
+  for (const item of items) if (item.label) labelUsage[item.label] = (labelUsage[item.label] ?? 0) + 1;
 
   return (
     <Card className="gap-0 py-0">
@@ -251,16 +287,16 @@ export function WatchlistTable({
             <p>No stocks on your watchlist yet. Add one above with the same symbol you would use for a trade.</p>
           </div>
         ) : (
-          <Table className="table-fixed min-w-[56rem]">
+          <Table className="table-fixed min-w-[60rem]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="w-24 pl-6">Symbol</TableHead>
-                <TableHead className="w-[26%]">Stock</TableHead>
+                <SortableHead label="Stock" sortKey="stock" sort={sort} onSortChange={onSortChange} className="w-[24%]" />
+                <SortableHead label="Label" sortKey="label" sort={sort} onSortChange={onSortChange} className="w-36" />
                 <TableHead className="text-right">Latest price</TableHead>
                 <TableHead className="text-right">Day change</TableHead>
                 <TableHead className="w-20 text-right">%</TableHead>
-                <TableHead className="w-36 text-right">Trigger price</TableHead>
-                <TableHead className="w-24 text-right">Added</TableHead>
+                <TableHead className="w-60 pr-28 text-right">Trigger price</TableHead>
                 <TableHead className="w-16 pr-6 text-right">
                   <span className="sr-only">Remove</span>
                 </TableHead>
@@ -296,8 +332,21 @@ export function WatchlistTable({
                         ) : null}
                       </div>
                     </TableCell>
+                    <TableCell>
+                      <LabelPicker
+                        value={item.label}
+                        labels={labels}
+                        usage={labelUsage}
+                        onChange={(next) => onLabelChange(item.symbol, next)}
+                        onCreate={onCreateLabel}
+                        onDelete={onDeleteLabel}
+                        compact
+                        usageNoun="watched stock"
+                        ariaLabel={`Label for ${label}`}
+                      />
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      <LatestPriceCell price={price} currency={currency} />
+                      <PriceCell price={price} currency={currency} />
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       <DayChangeValueCell price={price} currency={currency} />
@@ -313,7 +362,6 @@ export function WatchlistTable({
                         onChange={(value) => onTriggerChange(item.symbol, value)}
                       />
                     </TableCell>
-                    <TableCell className="text-right text-muted-foreground tabular-nums">{formatShortDate(item.addedOn)}</TableCell>
                     <TableCell className="pr-6 text-right">
                       <Tooltip delayDuration={300}>
                         <TooltipTrigger asChild>
@@ -336,6 +384,19 @@ export function WatchlistTable({
             </TableBody>
           </Table>
         )}
+        {rows.length > 0 ? (
+          <p className="border-t px-6 py-3 text-xs text-muted-foreground">
+            {lastRefreshAt > 0
+              ? `Prices fetched ${new Date(lastRefreshAt).toLocaleString('en-GB', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}. Press Refresh to update them.`
+              : 'No prices fetched yet. Press Refresh to fetch them.'}
+          </p>
+        ) : null}
       </CardContent>
     </Card>
   );

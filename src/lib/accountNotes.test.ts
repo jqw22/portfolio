@@ -12,7 +12,7 @@ import {
   type Ledger,
 } from './portfolio';
 
-const empty: Ledger = { transactions: [], cash: [], labels: [], accounts: [], stockNotes: {}, accountNotes: {}, watchlist: [] };
+const empty: Ledger = { transactions: [], cash: [], labels: [], accounts: [], stockNotes: {}, accountNotes: {}, watchlist: [], watchLabels: [] };
 
 const trade = (symbol: string, account: string) => ({
   id: `${account}-${symbol}`,
