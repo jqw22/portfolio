@@ -526,13 +526,13 @@ export default function Index() {
                 prices={prices}
               />
 
-              <Tabs defaultValue="holdings" className="min-w-0">
+              <Tabs defaultValue="analysis" className="min-w-0">
                 <TabsList>
-                  <TabsTrigger value="holdings">Holdings</TabsTrigger>
                   <TabsTrigger value="analysis">Summary</TabsTrigger>
+                  <TabsTrigger value="holdings">Holdings</TabsTrigger>
                   <TabsTrigger value="transactions">Transactions</TabsTrigger>
-                  <TabsTrigger value="watchlist">Watchlist</TabsTrigger>
                   <TabsTrigger value="risk">Analysis</TabsTrigger>
+                  <TabsTrigger value="watchlist">Watchlist</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="holdings" className="mt-4 space-y-6">
