@@ -17,6 +17,7 @@ import {
   newId,
   normalizeDate,
   normalizeLabel,
+  normalizeNewLabel,
   parseNumber,
   type CashMovement,
   type CashType,
@@ -223,7 +224,7 @@ export function csvToTransactions(text: string): CsvImportResult {
       price,
       fees,
       notes: notes || undefined,
-      label: normalizeLabel(cell(row, labelCol)),
+      label: normalizeNewLabel(cell(row, labelCol)),
       account: normalizeLabel(cell(row, accountCol)),
     });
   }

@@ -19,6 +19,8 @@ interface PrintTableProps {
   summary: GroupSummaryTable;
   showCash?: boolean;
   showShare?: boolean;
+  /** Narrow first column, for labels (at most 10 characters). */
+  narrowName?: boolean;
 }
 
 function signClass(value: number): string {
@@ -48,9 +50,9 @@ function Cells({ row, showCash, showShare }: { row: GroupSummary; showCash: bool
   );
 }
 
-function PrintTable({ title, groupHeading, unnamedLabel, summary, showCash = false, showShare = false }: PrintTableProps) {
+function PrintTable({ title, groupHeading, unnamedLabel, summary, showCash = false, showShare = false, narrowName = false }: PrintTableProps) {
   return (
-    <section>
+    <section className={narrowName ? 'narrow-name' : undefined}>
       <h2>{title}</h2>
       <table>
         <thead>
@@ -163,6 +165,7 @@ export function AnalysisPrintSheet({ accountSummary, labelSummary, currency, pri
         unnamedLabel="Unlabelled"
         summary={labelSummary}
         showShare
+        narrowName
       />
       <p className="note">
         Unpriced holdings count at cost. Each position counts under the label of its latest labelled trade.

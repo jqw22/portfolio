@@ -25,6 +25,8 @@ interface AnalysisTableProps {
   showShare?: boolean;
   /** Show a Cash column after Current value. */
   showCash?: boolean;
+  /** Width class for the first column (labels are short, accounts can be longer). */
+  nameWidth?: string;
 }
 
 function pnlClass(value: number): string {
@@ -95,7 +97,7 @@ function SummaryCells({
 }
 
 /** One summary row per account or label, with a total row. */
-export function AnalysisTable({ title, description, groupHeading, unnamedLabel, summary, currency, showShare = true, showCash = false }: AnalysisTableProps) {
+export function AnalysisTable({ title, description, groupHeading, unnamedLabel, summary, currency, showShare = true, showCash = false, nameWidth = 'w-48' }: AnalysisTableProps) {
   return (
     <Card className="gap-0 py-0">
       <CardHeader className="gap-0 border-b pt-5 [.border-b]:pb-5">
@@ -108,7 +110,7 @@ export function AnalysisTable({ title, description, groupHeading, unnamedLabel, 
         <Table className="min-w-[60rem] table-fixed">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="w-48 pl-6">{groupHeading}</TableHead>
+              <TableHead className={cn(nameWidth, 'pl-6')}>{groupHeading}</TableHead>
               <TableHead className="w-24 text-right">Positions</TableHead>
               <TableHead className="text-right">Cost basis</TableHead>
               <TableHead className="text-right">Day change</TableHead>

@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { findLabel, normalizeLabel } from '@/lib/portfolio';
+import { findLabel, LABEL_MAX_LENGTH, normalizeNewLabel } from '@/lib/portfolio';
 
 interface LabelPickerProps {
   id?: string;
@@ -42,7 +42,7 @@ export function LabelPicker({ id, value, labels, usage, onChange, onCreate, onDe
   const [search, setSearch] = useState('');
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
-  const typed = normalizeLabel(search);
+  const typed = normalizeNewLabel(search);
   const canCreate = Boolean(typed && !findLabel(labels, typed));
 
   const select = (label: string | undefined) => {
@@ -103,9 +103,9 @@ export function LabelPicker({ id, value, labels, usage, onChange, onCreate, onDe
             <CommandInput
               value={search}
               onValueChange={setSearch}
-              placeholder="Search or create a label"
-              aria-label="Search or create a label"
-              maxLength={64}
+              placeholder={`Search or create (max ${LABEL_MAX_LENGTH})`}
+              aria-label={`Search or create a label, up to ${LABEL_MAX_LENGTH} characters`}
+              maxLength={LABEL_MAX_LENGTH}
             />
             <CommandList>
               {!canCreate ? (

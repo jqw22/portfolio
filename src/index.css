@@ -222,6 +222,8 @@
 .analysis-print-sheet th { font-size: 8.5pt; font-weight: 600; color: #555; border-bottom: 1px solid #999; }
 .analysis-print-sheet th.name,
 .analysis-print-sheet td.name { width: 24%; text-align: left; padding-left: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.analysis-print-sheet .narrow-name th.name,
+.analysis-print-sheet .narrow-name td.name { width: 15%; }
 .analysis-print-sheet td.name { font-weight: 600; }
 .analysis-print-sheet .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .analysis-print-sheet th:last-child,

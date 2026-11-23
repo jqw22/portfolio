@@ -1,18 +1,5 @@
-import { useMemo, useState } from "react";
-import { RotateCcw } from "lucide-react";
+import { useMemo } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
-
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
 
 import {
   Card,
@@ -41,8 +28,6 @@ interface TotalValueChartProps {
   snapshots: Snapshot[];
   accounts: string[];
   currency: string;
-  /** Drop the history before today so the change is measured from today's value. */
-  onRestart?: () => void;
 }
 
 interface Row {
@@ -113,9 +98,7 @@ export function TotalValueChart({
   snapshots,
   accounts,
   currency,
-  onRestart,
 }: TotalValueChartProps) {
-  const [confirmOpen, setConfirmOpen] = useState(false);
   const { rows, domain, ticks, yScale } = useMemo(() => {
     const data = chartData(snapshots, currency, accounts, localDate());
     const rows: Row[] = data.rows.map((entry) => ({
@@ -172,23 +155,11 @@ export function TotalValueChart({
             </p>
           ) : null}
         </div>
-        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-          <CardDescription>
-            All accounts together, positions at latest prices plus cash, saved
-            once a day when Virtual Stock Portfolio is open (the last save of the day counts).
-            Up to the last 3 months.
-          </CardDescription>
-          {onRestart && rows.length > 0 ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setConfirmOpen(true)}
-            >
-              <RotateCcw />
-              Restart from today
-            </Button>
-          ) : null}
-        </div>
+        <CardDescription>
+          All accounts together, positions at latest prices plus cash, saved
+          once a day when Virtual Stock Portfolio is open (the last save of the day counts).
+          Up to the last 3 months.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
@@ -284,33 +255,6 @@ export function TotalValueChart({
           </ChartContainer>
         )}
       </CardContent>
-      {onRestart ? (
-        <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-          <AlertDialogContent size="sm">
-            <AlertDialogHeader>
-              <AlertDialogTitle>Restart the charts from today?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This deletes every saved day before today, on all your devices,
-                for both value charts. Today&apos;s value becomes the starting
-                point, and the change is measured from it. Your trades and cash
-                aren&apos;t affected.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                variant="destructive"
-                onClick={() => {
-                  onRestart();
-                  setConfirmOpen(false);
-                }}
-              >
-                Restart
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      ) : null}
     </Card>
   );
 }
