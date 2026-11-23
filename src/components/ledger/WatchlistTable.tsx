@@ -290,9 +290,9 @@ export function WatchlistTable({
           <Table className="table-fixed min-w-[60rem]">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="w-24 pl-6">Symbol</TableHead>
+                <SortableHead label="Label" sortKey="label" sort={sort} onSortChange={onSortChange} className="w-40 pl-6" />
+                <TableHead className="w-24">Symbol</TableHead>
                 <SortableHead label="Stock" sortKey="stock" sort={sort} onSortChange={onSortChange} className="w-[24%]" />
-                <SortableHead label="Label" sortKey="label" sort={sort} onSortChange={onSortChange} className="w-36" />
                 <TableHead className="text-right">Latest price</TableHead>
                 <TableHead className="text-right">Day change</TableHead>
                 <TableHead className="w-20 text-right">%</TableHead>
@@ -310,6 +310,19 @@ export function WatchlistTable({
                 return (
                   <TableRow key={item.symbol} className="group/row">
                     <TableCell className="pl-6">
+                      <LabelPicker
+                        value={item.label}
+                        labels={labels}
+                        usage={labelUsage}
+                        onChange={(next) => onLabelChange(item.symbol, next)}
+                        onCreate={onCreateLabel}
+                        onDelete={onDeleteLabel}
+                        compact
+                        usageNoun="watched stock"
+                        ariaLabel={`Label for ${label}`}
+                      />
+                    </TableCell>
+                    <TableCell>
                       <span className="block truncate font-medium" title={item.symbol}>
                         {item.symbol}
                       </span>
@@ -331,19 +344,6 @@ export function WatchlistTable({
                           </Badge>
                         ) : null}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <LabelPicker
-                        value={item.label}
-                        labels={labels}
-                        usage={labelUsage}
-                        onChange={(next) => onLabelChange(item.symbol, next)}
-                        onCreate={onCreateLabel}
-                        onDelete={onDeleteLabel}
-                        compact
-                        usageNoun="watched stock"
-                        ariaLabel={`Label for ${label}`}
-                      />
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       <PriceCell price={price} currency={currency} />
