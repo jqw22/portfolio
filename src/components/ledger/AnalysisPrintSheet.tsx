@@ -90,8 +90,6 @@ interface AnalysisPrintSheetProps {
   accountSummary: GroupSummaryTable;
   labelSummary: GroupSummaryTable;
   currency: string;
-  /** When prices were last fetched (ms), or 0. */
-  pricesFetchedAt: number;
   /** Called once the print dialog has closed. Keep it stable (useCallback). */
   onDone: () => void;
 }
@@ -109,7 +107,7 @@ const DATE_TIME: Intl.DateTimeFormatOptions = {
  * mounted, printing shows only this sheet; it shrinks itself to fit the page
  * when the tables are too long, then opens the browser's print dialog.
  */
-export function AnalysisPrintSheet({ accountSummary, labelSummary, currency, pricesFetchedAt, onDone }: AnalysisPrintSheetProps) {
+export function AnalysisPrintSheet({ accountSummary, labelSummary, currency, onDone }: AnalysisPrintSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -149,7 +147,6 @@ export function AnalysisPrintSheet({ accountSummary, labelSummary, currency, pri
         <p>
           {`Amounts in ${currency} · `}
           {now.toLocaleString('en-GB', DATE_TIME)}
-          {pricesFetchedAt > 0 ? ` · Prices fetched ${new Date(pricesFetchedAt).toLocaleString('en-GB', DATE_TIME)}` : ''}
         </p>
       </header>
       <PrintTable

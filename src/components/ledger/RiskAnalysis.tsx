@@ -24,6 +24,7 @@ import {
   type VolatilitySortKey,
 } from '@/lib/risk';
 import { cn } from '@/lib/utils';
+import { PriceStatus, type PriceRefreshReport } from '@/components/ledger/PriceStatus';
 
 /** Yahoo's symbol for the FTSE 100 index, the comparison for UK portfolios. */
 const BENCHMARK = '^FTSE';
@@ -38,6 +39,8 @@ interface RiskAnalysisProps {
   currency: string;
   /** Latest stock name by symbol. */
   names: Map<string, string>;
+  /** What the last Refresh did, shown at the bottom with any history problems. */
+  priceReport: PriceRefreshReport | null;
 }
 
 function yahooSymbol(symbol: string, settings: PriceSettings): string {
@@ -83,11 +86,6 @@ function cellStyle(value: number | null): CSSProperties {
 }
 
 /** `YYYY-MM-DD` as `dd/mm/yy`, e.g. `20/11/26`. */
-function shortDate(iso: string): string {
-  const [year, month, day] = iso.split('-');
-  return year && month && day ? `${day}/${month}/${year.slice(2)}` : iso;
-}
-
 function shortSymbol(symbol: string): string {
   return symbol.replace(/^[A-Z]+:/, '').split('.')[0];
 }
@@ -175,7 +173,8 @@ function VolatilityCell({ stock }: { stock: StockRisk }) {
  * each one causes, and which holdings move together (correlation), from about a year of daily
  * closes fetched through the price relay.
  */
-export function RiskAnalysis({ holdings, prices, priceSettings, currency, names }: RiskAnalysisProps) {
+export function RiskAnalysis({ holdings, prices, priceSettings, currency, names, priceReport }: RiskAnalysisProps) {
+  const priceStatusSymbols = useMemo(() => Array.from(new Set(holdings.map((holding) => holding.symbol))).sort(), [holdings]);
   // One entry per stock, all accounts together. Ledger symbols that fetch the same Yahoo price
   // (e.g. `VOD.L` and `LON:VOD`) are the same stock, so they're combined too.
   const stocks = useMemo(() => {
@@ -249,7 +248,6 @@ export function RiskAnalysis({ holdings, prices, priceSettings, currency, names 
   const pairs = useMemo(() => correlationPairs(report), [report]);
   const nameOf = useMemo(() => new Map(report.stocks.map((stock) => [stock.symbol, stock.name])), [report.stocks]);
 
-  const fetchedAt = Math.max(0, ...historySymbols.map((symbol) => history.series[symbol]?.fetchedAt ?? 0));
   const failed = historySymbols.filter((symbol) => history.errors[symbol] && !history.series[symbol]);
   const monthMove = report.portfolioVolatility !== null ? (report.portfolioVolatility / Math.sqrt(12)) * report.totalValue : null;
 
@@ -270,7 +268,6 @@ export function RiskAnalysis({ holdings, prices, priceSettings, currency, names 
           <h2 className="text-lg font-semibold tracking-tight">Volatility and correlation</h2>
           <p className="text-sm text-muted-foreground">
             From the last year of daily closing prices on Yahoo Finance, in {currency}. Cash isn't included.
-            {fetchedAt > 0 ? ` Prices up to ${shortDate(report.to || new Date(fetchedAt).toISOString().slice(0, 10))}.` : ''}
           </p>
         </div>
         <Button
@@ -283,40 +280,6 @@ export function RiskAnalysis({ holdings, prices, priceSettings, currency, names 
           {history.isLoading ? 'Fetching history…' : 'Refresh history'}
         </Button>
       </div>
-
-      {!history.hasRelay ? (
-        <Card>
-          <CardContent className="py-6 text-sm text-muted-foreground">
-            This needs the price relay. Open <span className="font-medium text-foreground">Prices</span> and add your price
-            relay address, then come back here.
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {history.problem ? (
-        <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
-          {history.problem}
-        </div>
-      ) : null}
-
-      {failed.length > 0 || unpriced.length > 0 || missing.length > 0 ? (
-        <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          {failed.length > 0 ? (
-            <p>
-              No history for{' '}
-              {failed.map((symbol, index) => (
-                <span key={symbol}>
-                  {index > 0 ? ', ' : ''}
-                  <span className="font-medium text-foreground">{symbol}</span> ({history.errors[symbol]})
-                </span>
-              ))}
-              .
-            </p>
-          ) : null}
-          {unpriced.length > 0 ? <p>Left out (no latest price): {unpriced.join(', ')}.</p> : null}
-          {missing.length > 0 && !history.isLoading ? <p>Left out (no price history yet): {missing.join(', ')}.</p> : null}
-        </div>
-      ) : null}
 
       {report.stocks.length > 0 ? (
         <>
@@ -522,6 +485,29 @@ export function RiskAnalysis({ holdings, prices, priceSettings, currency, names 
           <CardContent className="py-10 text-center text-sm text-muted-foreground">Fetching a year of prices…</CardContent>
         </Card>
       ) : null}
+      <PriceStatus symbols={priceStatusSymbols} prices={prices} names={names} report={priceReport}>
+        {!history.hasRelay ? (
+          <p>
+            Volatility and correlation need the price relay. Open <span className="font-medium text-foreground">Prices</span>{' '}
+            and add your price relay address.
+          </p>
+        ) : null}
+        {history.problem ? <p className="text-amber-700 dark:text-amber-400">{history.problem}</p> : null}
+        {failed.length > 0 ? (
+          <p>
+            No history for{' '}
+            {failed.map((symbol, index) => (
+              <span key={symbol}>
+                {index > 0 ? ', ' : ''}
+                <span className="font-medium text-foreground">{symbol}</span> ({history.errors[symbol]})
+              </span>
+            ))}
+            .
+          </p>
+        ) : null}
+        {unpriced.length > 0 ? <p>Left out (no latest price): {unpriced.join(', ')}.</p> : null}
+        {missing.length > 0 && !history.isLoading ? <p>Left out (no price history yet): {missing.join(', ')}.</p> : null}
+      </PriceStatus>
     </div>
   );
 }

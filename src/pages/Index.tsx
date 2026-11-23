@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { useSeoMeta } from '@unhead/react';
-import { LineChart, Plus, Printer, RefreshCw, Wallet } from 'lucide-react';
+import { LineChart, Plus, Printer, RefreshCw, Wallet, X } from 'lucide-react';
 
 import { LoginArea } from '@/components/auth/LoginArea';
 import { StoredKeyNotice } from '@/components/auth/StoredKeyNotice';
@@ -13,6 +13,7 @@ import { DataMenu } from '@/components/ledger/DataMenu';
 import { EmptyState } from '@/components/ledger/EmptyState';
 import { HoldingsTable, HoldingsTotal } from '@/components/ledger/HoldingsTable';
 import { PricesDialog } from '@/components/ledger/PricesDialog';
+import { PriceStatus, type PriceRefreshReport } from '@/components/ledger/PriceStatus';
 import { RiskAnalysis } from '@/components/ledger/RiskAnalysis';
 import { SummaryCards } from '@/components/ledger/SummaryCards';
 import { TransactionDialog, type TradePrefill } from '@/components/ledger/TransactionDialog';
@@ -30,7 +31,7 @@ import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { usePrices } from '@/hooks/usePrices';
 import { useStockTransactions } from '@/hooks/useStockTransactions';
 import { useToast } from '@/hooks/useToast';
-import { summariseByAccount, summariseByLabel } from '@/lib/analysis';
+import { positionLabels, summariseByAccount, summariseByLabel, type GroupSummary } from '@/lib/analysis';
 import { cashBalanceList, newCashShortfalls, type CashBalance } from '@/lib/cash';
 import { csvToTransactions } from '@/lib/csv';
 import { accountValues } from '@/lib/snapshots';
@@ -85,6 +86,17 @@ function groupByAccount(holdings: Holding[], cashBalances: CashBalance[], accoun
     return index === -1 ? accounts.length : index;
   };
   return Array.from(groups.values()).sort((a, b) => order(a) - order(b));
+}
+
+/** Which positions Holdings shows when opened from a Summary table. `name` is undefined for No account / Unlabelled. */
+interface HoldingsFilter {
+  kind: 'account' | 'label';
+  name?: string;
+}
+
+function filterTitle(filter: HoldingsFilter): string {
+  if (filter.kind === 'account') return filter.name ?? 'No account';
+  return filter.name ? `Label: ${filter.name}` : 'Unlabelled';
 }
 
 function LedgerSkeleton() {
@@ -173,6 +185,8 @@ export default function Index() {
   const [prefill, setPrefill] = useState<TradePrefill | null>(null);
   const [accountsOpen, setAccountsOpen] = useState(false);
   const [pricesOpen, setPricesOpen] = useState(false);
+  const [tab, setTab] = useState('analysis');
+  const [priceReport, setPriceReport] = useState<PriceRefreshReport | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Accounts are listed A to Z everywhere: drop-downs, holdings, charts and the Accounts dialog.
@@ -186,9 +200,31 @@ export default function Index() {
     [transactions, cash, accounts],
   );
   const cashTotal = cashBalances.reduce((sum, balance) => sum + balance.balance, 0);
+  // Set from the Summary tables' Positions links: Holdings shows only that account's or label's positions.
+  const [holdingsFilter, setHoldingsFilter] = useState<HoldingsFilter | null>(null);
+  const labelByPosition = useMemo(() => positionLabels(transactions), [transactions]);
+  const { shownHoldings, shownCash } = useMemo(() => {
+    if (!holdingsFilter) return { shownHoldings: portfolio.openHoldings, shownCash: cashBalances };
+    const target = holdingsFilter.name?.toLowerCase();
+    if (holdingsFilter.kind === 'account') {
+      return {
+        shownHoldings: portfolio.openHoldings.filter((holding) => holding.account?.toLowerCase() === target),
+        shownCash: cashBalances.filter((balance) => balance.account?.toLowerCase() === target),
+      };
+    }
+    return {
+      shownHoldings: portfolio.openHoldings.filter((holding) => labelByPosition.get(holding.key)?.toLowerCase() === target),
+      // Cash has no label.
+      shownCash: [],
+    };
+  }, [holdingsFilter, portfolio.openHoldings, cashBalances, labelByPosition]);
+  const shownSymbols = useMemo(
+    () => Array.from(new Set(shownHoldings.map((holding) => holding.symbol))).sort(),
+    [shownHoldings],
+  );
   const accountPositions = useMemo(
-    () => groupByAccount(portfolio.openHoldings, cashBalances, accounts),
-    [portfolio.openHoldings, cashBalances, accounts],
+    () => groupByAccount(shownHoldings, shownCash, accounts),
+    [shownHoldings, shownCash, accounts],
   );
   const openSymbols = useMemo(
     () => Array.from(new Set(portfolio.openHoldings.map((holding) => holding.symbol))).sort(),
@@ -200,6 +236,7 @@ export default function Index() {
     [openSymbols, watchlist],
   );
   const heldSymbols = useMemo(() => new Set(openSymbols), [openSymbols]);
+  const watchSymbols = useMemo(() => watchlist.map((item) => item.symbol), [watchlist]);
   const knownNames = useMemo(() => {
     const names = new Map<string, string>();
     for (const tx of sortByDate(transactions)) {
@@ -213,7 +250,6 @@ export default function Index() {
     settings: priceSettings,
     setSettings: setPriceSettings,
     quotes,
-    lastRefreshAt,
     hasKey,
     isRefreshing,
     refresh: refreshPrices,
@@ -261,35 +297,33 @@ export default function Index() {
     for (const failure of result.failed) problems.push(`No price for ${failure.symbol}. ${failure.message}`);
     if (hasKey && result.needKey.length > 0) problems.push('Add an API key in Prices, or enter prices by hand.');
     if (result.fxFailed) problems.push('Exchange rates could not be updated.');
-    const kept =
+    const notes =
       result.skipped > 0
         ? [`${result.skipped} price${result.skipped === 1 ? ' was' : 's were'} fetched in the last 4 hours and kept.`]
         : [];
+    const title =
+      result.updated > 0
+        ? `Updated ${result.updated} price${result.updated === 1 ? '' : 's'}`
+        : result.skipped > 0 && problems.length === 0
+          ? 'Prices are up to date'
+          : 'No prices updated';
+    // The details go at the bottom of each tab; the toast only says what happened.
+    setPriceReport({ title, problems, notes });
     toast({
-      title:
-        result.updated > 0
-          ? `Updated ${result.updated} price${result.updated === 1 ? '' : 's'}`
-          : result.skipped > 0 && problems.length === 0
-            ? 'Prices are up to date'
-            : 'No prices updated',
-      // One line each; selectable so the reasons can be copied.
+      title,
       description:
-        problems.length + kept.length > 0 ? (
-          <span className="block whitespace-pre-line select-text">{[...problems, ...kept].join('\n')}</span>
-        ) : undefined,
+        problems.length > 0
+          ? `${problems.length} problem${problems.length === 1 ? '' : 's'}, listed at the bottom of the page.`
+          : undefined,
       variant: result.updated === 0 && problems.length > 0 ? 'destructive' : undefined,
-      // Problems stay until closed, with a button to copy them.
-      ...(problems.length > 0
-        ? {
-            duration: Infinity,
-            action: (
-              <ToastAction altText="Copy the problems" onClick={() => void navigator.clipboard?.writeText(problems.join('\n'))}>
-                Copy
-              </ToastAction>
-            ),
-          }
-        : {}),
     });
+  };
+
+  /** Open Holdings showing only one account's or label's positions. */
+  const showPositions = (kind: HoldingsFilter['kind'], row: GroupSummary) => {
+    setHoldingsFilter({ kind, name: row.name });
+    setTab('holdings');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSavePrices = (next: typeof priceSettings) => {
@@ -526,7 +560,15 @@ export default function Index() {
                 prices={prices}
               />
 
-              <Tabs defaultValue="analysis" className="min-w-0">
+              <Tabs
+                value={tab}
+                onValueChange={(next) => {
+                  setTab(next);
+                  // A filter set from Summary lasts until you leave Holdings.
+                  if (next !== 'holdings') setHoldingsFilter(null);
+                }}
+                className="min-w-0"
+              >
                 <TabsList>
                   <TabsTrigger value="analysis">Summary</TabsTrigger>
                   <TabsTrigger value="holdings">Holdings</TabsTrigger>
@@ -561,23 +603,25 @@ export default function Index() {
                             Group by account
                           </Label>
                         </div>
-                        {lastRefreshAt > 0 ? (
-                          <span className="text-xs text-muted-foreground" title={new Date(lastRefreshAt).toLocaleString()}>
-                            Prices fetched{' '}
-                            {new Date(lastRefreshAt).toLocaleString(undefined, {
-                              day: 'numeric',
-                              month: 'short',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </span>
-                        ) : null}
                         <Button variant="outline" size="sm" onClick={() => setPricesOpen(true)} aria-label="Price settings">
                           <LineChart />
                           {hasKey ? 'Prices' : 'Set up prices'}
                         </Button>
                       </div>
                     </div>
+                    {holdingsFilter ? (
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-500/30 bg-sky-500/10 px-4 py-2.5 text-sm">
+                        <span>
+                          Showing only <span className="font-medium">{filterTitle(holdingsFilter)}</span>
+                          {' · '}
+                          {shownHoldings.length} position{shownHoldings.length === 1 ? '' : 's'}
+                        </span>
+                        <Button variant="outline" size="sm" className="h-7" onClick={() => setHoldingsFilter(null)}>
+                          <X />
+                          Show all
+                        </Button>
+                      </div>
+                    ) : null}
                     {groupHoldings ? (
                       <>
                         {accountPositions.map((group) => (
@@ -602,9 +646,9 @@ export default function Index() {
                         ))}
                         {accountPositions.length > 1 ? (
                           <HoldingsTotal
-                            title="All accounts"
-                            holdings={portfolio.openHoldings}
-                            cashBalances={cashBalances}
+                            title={holdingsFilter ? 'Total' : 'All accounts'}
+                            holdings={shownHoldings}
+                            cashBalances={shownCash}
                             currency={currency}
                             prices={prices}
                           />
@@ -612,10 +656,10 @@ export default function Index() {
                       </>
                     ) : (
                       <HoldingsTable
-                        holdings={portfolio.openHoldings}
+                        holdings={shownHoldings}
                         currency={currency}
-                        title="All accounts"
-                        cashBalances={cashBalances}
+                        title={holdingsFilter ? filterTitle(holdingsFilter) : 'All accounts'}
+                        cashBalances={shownCash}
                         prices={prices}
                         showAccount
                         footerLabel="Total"
@@ -630,6 +674,7 @@ export default function Index() {
                       />
                     )}
                   </section>
+                  <PriceStatus symbols={shownSymbols} prices={prices} names={knownNames} report={priceReport} />
                 </TabsContent>
 
                 <TabsContent value="transactions" className="mt-4">
@@ -645,7 +690,7 @@ export default function Index() {
                   />
                 </TabsContent>
 
-                <TabsContent value="watchlist" className="mt-4">
+                <TabsContent value="watchlist" className="mt-4 space-y-6">
                   <WatchlistTable
                     items={watchlist}
                     currency={currency}
@@ -664,8 +709,8 @@ export default function Index() {
                     onDeleteLabel={deleteWatchLabel}
                     sort={watchSort}
                     onSortChange={setWatchSort}
-                    lastRefreshAt={lastRefreshAt}
                   />
+                  <PriceStatus symbols={watchSymbols} prices={prices} names={knownNames} report={priceReport} />
                 </TabsContent>
 
                 <TabsContent value="risk" className="mt-4">
@@ -675,6 +720,7 @@ export default function Index() {
                     priceSettings={priceSettings}
                     currency={currency}
                     names={knownNames}
+                    priceReport={priceReport}
                   />
                 </TabsContent>
 
@@ -706,6 +752,7 @@ export default function Index() {
                     currency={currency}
                     showShare={false}
                     showCash
+                    onPositionsClick={(row) => showPositions('account', row)}
                   />
                   <AnalysisTable
                     title="By label"
@@ -715,7 +762,9 @@ export default function Index() {
                     summary={labelSummary}
                     currency={currency}
                     nameWidth="w-32"
+                    onPositionsClick={(row) => showPositions('label', row)}
                   />
+                  <PriceStatus symbols={openSymbols} prices={prices} names={knownNames} report={priceReport} />
                 </TabsContent>
               </Tabs>
             </div>
@@ -728,7 +777,6 @@ export default function Index() {
           accountSummary={accountSummary}
           labelSummary={labelSummary}
           currency={currency}
-          pricesFetchedAt={lastRefreshAt}
           onDone={finishPrinting}
         />
       ) : null}
