@@ -39,6 +39,8 @@ import {
   removeFromWatchlist as removeLedgerWatch,
   setWatchTrigger as setLedgerWatchTrigger,
   restoreWatchItem,
+  setWatchLabel as setLedgerWatchLabel,
+  removeWatchLabel,
   type WatchItem,
   type CashMovement,
   type CashMovementInput,
@@ -57,13 +59,13 @@ const CACHE_PREFIX = 'stock-ledger:cache:';
  * Version 1 caches held transactions only; version 2 adds labels and accounts
  * (a missing `accounts` reads as empty); version 3 adds cash movements;
  * version 4 adds stock notes; version 5 adds the watchlist; version 6 adds
- * notes per account. All are readable.
+ * notes per account; version 7 adds watchlist labels. All are readable.
  */
-const CACHE_VERSION = 6;
+const CACHE_VERSION = 7;
 /** Version of the decrypted relay payload (see NIP.md). */
-const PAYLOAD_VERSION = 7;
+const PAYLOAD_VERSION = 8;
 
-const EMPTY_LEDGER: Ledger = { transactions: [], cash: [], labels: [], accounts: [], stockNotes: {}, accountNotes: {}, watchlist: [] };
+const EMPTY_LEDGER: Ledger = { transactions: [], cash: [], labels: [], accounts: [], stockNotes: {}, accountNotes: {}, watchlist: [], watchLabels: [] };
 
 interface LedgerCache {
   version: number;
@@ -83,7 +85,7 @@ function readCache(pubkey?: string): LedgerCache | null {
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null) return null;
     const record = parsed as Record<string, unknown>;
-    if (![1, 2, 3, 4, 5, CACHE_VERSION].includes(record.version as number)) return null;
+    if (![1, 2, 3, 4, 5, 6, CACHE_VERSION].includes(record.version as number)) return null;
     const updatedAt = typeof record.updatedAt === 'number' ? record.updatedAt : 0;
     return { version: CACHE_VERSION, updatedAt, ledger: parseLedger(record) };
   } catch (error) {
@@ -115,6 +117,8 @@ export interface StockTransactions {
   accountNotes: Record<string, Record<string, string>>;
   /** Stocks being watched, in the order they were added. */
   watchlist: WatchItem[];
+  /** Labels for watched stocks, in creation order. */
+  watchLabels: string[];
   isLoading: boolean;
   isSyncing: boolean;
   isLoggedIn: boolean;
@@ -154,6 +158,12 @@ export interface StockTransactions {
   removeWatch: (symbol: string) => void;
   /** Put a removed watchlist item back as it was. */
   restoreWatch: (item: WatchItem) => void;
+  /** Add a watchlist label (no-op if it exists) and return its stored spelling. */
+  addWatchLabel: (label: string) => string | undefined;
+  /** Delete a watchlist label and clear it from every watched stock. */
+  deleteWatchLabel: (label: string) => void;
+  /** Give a watched stock a label, or clear it with `undefined`. */
+  setWatchLabel: (symbol: string, label: string | undefined) => void;
   /** Set or clear (with `undefined`) a watched stock's trigger price. */
   setWatchTrigger: (symbol: string, triggerPrice: number | undefined) => void;
   /** The raw query, exposed for advanced callers. */
@@ -194,6 +204,7 @@ export function useStockTransactions(): StockTransactions {
         stockNotes: ledger.stockNotes,
         accountNotes: ledger.accountNotes,
         watchlist: ledger.watchlist,
+        watchLabels: ledger.watchLabels,
       };
       const ciphertext = await nip44.encrypt(user.pubkey, JSON.stringify(payload));
       const now = Math.floor(Date.now() / 1000);
@@ -288,7 +299,8 @@ export function useStockTransactions(): StockTransactions {
             local.ledger.labels.length > 0 ||
             local.ledger.accounts.length > 0 ||
             noteCount(local.ledger) > 0 ||
-            local.ledger.watchlist.length > 0)
+            local.ledger.watchlist.length > 0 ||
+            local.ledger.watchLabels.length > 0)
         ) {
           enqueuePublish(local.ledger);
         }
@@ -468,6 +480,33 @@ export function useStockTransactions(): StockTransactions {
     [commitLedger],
   );
 
+  const addWatchLabel = useCallback(
+    (value: string): string | undefined => {
+      const label = normalizeNewLabel(value);
+      if (!label) return undefined;
+      const current = queryClient.getQueryData<Ledger>(queryKey) ?? EMPTY_LEDGER;
+      const existing = findLabel(current.watchLabels, label);
+      if (existing) return existing;
+      commitLedger((previous) => ({ ...previous, watchLabels: mergeLabels(previous.watchLabels, [label]) }));
+      return label;
+    },
+    [commitLedger, queryClient, queryKey],
+  );
+
+  const deleteWatchLabel = useCallback(
+    (label: string) => {
+      commitLedger((previous) => removeWatchLabel(previous, label));
+    },
+    [commitLedger],
+  );
+
+  const setWatchLabel = useCallback(
+    (symbol: string, label: string | undefined) => {
+      commitLedger((previous) => setLedgerWatchLabel(previous, symbol, label));
+    },
+    [commitLedger],
+  );
+
   const restoreWatch = useCallback(
     (item: WatchItem) => {
       commitLedger((previous) => restoreWatchItem(previous, item));
@@ -494,6 +533,7 @@ export function useStockTransactions(): StockTransactions {
     stockNotes: query.data?.stockNotes ?? EMPTY_LEDGER.stockNotes,
     accountNotes: query.data?.accountNotes ?? EMPTY_LEDGER.accountNotes,
     watchlist: query.data?.watchlist ?? EMPTY_LEDGER.watchlist,
+    watchLabels: query.data?.watchLabels ?? EMPTY_LEDGER.watchLabels,
     isLoading: query.isLoading,
     isSyncing,
     isLoggedIn: Boolean(user),
@@ -519,6 +559,9 @@ export function useStockTransactions(): StockTransactions {
     removeWatch,
     setWatchTrigger,
     restoreWatch,
+    addWatchLabel,
+    deleteWatchLabel,
+    setWatchLabel,
     query,
   };
 }

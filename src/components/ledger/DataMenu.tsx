@@ -51,10 +51,10 @@ export function DataMenu({ ledger, onRequestImport, onLoadSample, onReset }: Dat
   const { toast } = useToast();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const { transactions, cash, labels, accounts, watchlist } = ledger;
+  const { transactions, cash, labels, accounts, watchlist, watchLabels } = ledger;
   const noteCount = countNotes(ledger);
   const entryCount = transactions.length + cash.length;
-  const isEmpty = entryCount === 0 && labels.length === 0 && accounts.length === 0 && noteCount === 0 && watchlist.length === 0;
+  const isEmpty = entryCount === 0 && labels.length === 0 && accounts.length === 0 && noteCount === 0 && watchlist.length === 0 && watchLabels.length === 0;
 
   const handleExportCsv = () => {
     downloadFile(`stock-ledger-${todayIso()}.csv`, transactionsToCsv(transactions, cash), 'text/csv;charset=utf-8');

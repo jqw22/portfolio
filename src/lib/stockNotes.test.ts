@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { parseLedger, setStockNote, STOCK_NOTE_MAX_LENGTH, type Ledger } from './portfolio';
 
-const empty: Ledger = { transactions: [], cash: [], labels: [], accounts: [], stockNotes: {}, accountNotes: {}, watchlist: [] };
+const empty: Ledger = { transactions: [], cash: [], labels: [], accounts: [], stockNotes: {}, accountNotes: {}, watchlist: [], watchLabels: [] };
 
 describe('stock notes', () => {
   it('reads notes keyed by upper-cased symbol and drops blanks and junk', () => {

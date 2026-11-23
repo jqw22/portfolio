@@ -45,7 +45,7 @@ const plaintext = await user.signer.nip44.decrypt(user.pubkey, event.content);
 ### Write / update
 
 ```ts
-const payload = { version: 7, transactions, cash, labels, accounts, stockNotes, accountNotes, watchlist };
+const payload = { version: 8, transactions, cash, labels, accounts, stockNotes, accountNotes, watchlist, watchLabels };
 const ciphertext = await user.signer.nip44.encrypt(user.pubkey, JSON.stringify(payload));
 await createEvent({
   kind: 30078,
@@ -66,7 +66,7 @@ stocks they are watching:
 
 ```jsonc
 {
-  "version": 7,
+  "version": 8,
   "labels": ["Long term", "Dividend"], // user-defined labels, in creation order
   "accounts": ["ISA", "General"],      // accounts trades are made in, in creation order
   "stockNotes": {                      // one note per stock, for the watchlist and holdings with no account
@@ -77,8 +77,9 @@ stocks they are watching:
   },
   "watchlist": [                       // stocks being watched, owned or not, in the order added
     { "symbol": "VOD.L", "name": "Vodafone Group", "addedOn": "2026-11-22", // name optional
-      "triggerPrice": 0.65 }                           // trigger optional
+      "triggerPrice": 0.65, "label": "Buy dip" }      // trigger and label optional
   ],
+  "watchLabels": ["Buy dip", "Income"], // labels for watched stocks, separate from `labels`
   "transactions": [
     {
       "id": "0f1e2d3c-…",   // opaque client-generated identifier
@@ -136,11 +137,15 @@ Watchlist symbols are upper-cased tickers, as used on transactions, and appear a
 most once; `addedOn` is a YYYY-MM-DD date. Readers drop entries without a symbol
 and later repeats of a symbol. Resetting the ledger empties the watchlist.
 `triggerPrice` is an optional positive price in the display currency (an
-addition within version 6).
+addition within version 6). `label` is optional and one of `watchLabels`, which
+follow the same rules as trade labels (new ones at most 10 characters) but are a
+separate list. A watched stock's `label` missing from `watchLabels` is added on
+read; deleting a watchlist label clears it from every watched stock.
 
 ### Older versions
 
-Version 6 is the same object without `accountNotes`. Readers give each
+Version 7 is the same object without `watchLabels`; readers treat a missing
+`watchLabels` as `[]`. Version 6 is the same object without `accountNotes`. Readers give each
 account that has a transaction in a stock its own copy of that stock's
 `stockNotes` entry (notes used to be shared by every account).
 Version 5 is the same object without `watchlist`; readers treat a missing
@@ -155,7 +160,7 @@ transaction objects (the `transactions` array above, without `label` or
 `account`). Readers must still accept this form and treat it as
 `{ "labels": [], "accounts": [], "cash": [], "transactions": <array> }`.
 
-The next write upgrades any older revision to version 6.
+The next write upgrades any older revision to version 8.
 
 ## Derived values (not stored)
 

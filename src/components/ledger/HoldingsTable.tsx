@@ -81,7 +81,7 @@ interface SortableHeadProps {
 }
 
 /** A column heading that sorts by its column: ascending first, then flips on each click. */
-function SortableHead({ label, sortKey, sort, onSortChange, className }: SortableHeadProps) {
+export function SortableHead({ label, sortKey, sort, onSortChange, className }: SortableHeadProps) {
   if (!sort || !onSortChange) return <TableHead className={className}>{label}</TableHead>;
   const active = sort.key === sortKey;
   const next: HoldingSort = {

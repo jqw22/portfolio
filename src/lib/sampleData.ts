@@ -35,5 +35,6 @@ export function sampleLedger(): Ledger {
     stockNotes: {},
     accountNotes: {},
     watchlist: [],
+    watchLabels: [],
   };
 }

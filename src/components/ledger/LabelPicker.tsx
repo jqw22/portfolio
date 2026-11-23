@@ -35,9 +35,26 @@ interface LabelPickerProps {
   /** Create a label and return its stored spelling. */
   onCreate: (label: string) => string | undefined;
   onDelete: (label: string) => void;
+  /** A smaller button for use inside a table row. */
+  compact?: boolean;
+  /** What `usage` counts, for the delete confirmation (default "transaction"). */
+  usageNoun?: string;
+  /** Accessible name of the button, when there is no visible label for it. */
+  ariaLabel?: string;
 }
 
-export function LabelPicker({ id, value, labels, usage, onChange, onCreate, onDelete }: LabelPickerProps) {
+export function LabelPicker({
+  id,
+  value,
+  labels,
+  usage,
+  onChange,
+  onCreate,
+  onDelete,
+  compact = false,
+  usageNoun = 'transaction',
+  ariaLabel,
+}: LabelPickerProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
@@ -89,10 +106,11 @@ export function LabelPicker({ id, value, labels, usage, onChange, onCreate, onDe
             variant="outline"
             role="combobox"
             aria-expanded={open}
-            className="w-full justify-between font-normal"
+            aria-label={ariaLabel}
+            className={cn('w-full justify-between font-normal', compact && 'h-8 gap-1 px-2 text-sm')}
           >
-            <span className={cn('flex min-w-0 items-center gap-2', !value && 'text-muted-foreground')}>
-              <Tag className="size-4 shrink-0" />
+            <span className={cn('flex min-w-0 items-center gap-2', compact && 'gap-1.5', !value && 'text-muted-foreground')}>
+              <Tag className={cn('size-4 shrink-0', compact && 'size-3.5')} />
               <span className="truncate">{value ?? 'No label'}</span>
             </span>
             <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
@@ -169,8 +187,8 @@ export function LabelPicker({ id, value, labels, usage, onChange, onCreate, onDe
           <AlertDialogHeader>
             <AlertDialogTitle>Delete label “{pendingDelete}”?</AlertDialogTitle>
             <AlertDialogDescription>
-              It will be removed from {pendingCount} transaction{pendingCount === 1 ? '' : 's'}. The transactions
-              themselves are kept.
+              It will be removed from {pendingCount} {usageNoun}
+              {pendingCount === 1 ? '' : 's'}. The {usageNoun}s themselves are kept.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
