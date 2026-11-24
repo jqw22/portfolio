@@ -33,7 +33,6 @@ import {
 } from '@/lib/portfolio';
 import {
   dayChangeValue,
-  formatFetchedOn,
   isPence,
   totalDayChange,
   totalUnrealised,
@@ -147,13 +146,11 @@ export function LatestPriceCell({ price, currency }: { price: ResolvedPrice | nu
       <span className="font-medium">
         {price.price === null ? formatNativePrice(price.nativePrice, price.nativeCurrency) : formatCurrency(price.price, currency)}
       </span>
-      <p className="mt-0.5 text-xs whitespace-normal text-muted-foreground">
-        {price.price === null
-          ? `No ${currency} rate`
-          : price.source === 'manual'
-            ? 'Manual'
-            : formatFetchedOn(price.updatedAt)}
-      </p>
+      {price.price === null || price.source === 'manual' ? (
+        <p className="mt-0.5 text-xs whitespace-normal text-muted-foreground">
+          {price.price === null ? `No ${currency} rate` : 'Manual'}
+        </p>
+      ) : null}
     </div>
   );
 }

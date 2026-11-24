@@ -16,7 +16,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { CURRENCIES } from '@/lib/currency';
 import { parseNumber } from '@/lib/portfolio';
 import {
-  formatFetchedOn,
   parseRelayUrl,
   quoteCurrencyFor,
   quoteSymbolFor,
@@ -299,7 +298,7 @@ function PricesForm({
                       <p className="font-semibold">{symbol}</p>
                       <p className="truncate text-xs text-muted-foreground">
                         {quote
-                          ? `Last fetched ${quote.price} ${quote.currency} on ${formatFetchedOn(quote.fetchedAt)}`
+                          ? `Last fetched ${quote.price} ${quote.currency}`
                           : 'Not fetched yet'}
                       </p>
                     </div>

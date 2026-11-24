@@ -25,6 +25,8 @@ interface AnalysisTableProps {
   showShare?: boolean;
   /** Show a Cash column after Current value. */
   showCash?: boolean;
+  /** Makes each row's Positions count a link, e.g. to open Holdings filtered to the row. */
+  onPositionsClick?: (row: GroupSummary) => void;
   /** Width class for the first column (labels are short, accounts can be longer). */
   nameWidth?: string;
 }
@@ -44,18 +46,35 @@ function SummaryCells({
   isTotal = false,
   showShare,
   showCash,
+  onPositionsClick,
 }: {
   row: GroupSummary;
   currency: string;
   isTotal?: boolean;
   showShare: boolean;
   showCash: boolean;
+  onPositionsClick?: (row: GroupSummary) => void;
 }) {
   const weight = isTotal ? 'font-semibold' : 'font-medium';
   const dayPercent = dayChangePercentOf(row);
   return (
     <>
-      <TableCell className="text-right tabular-nums">{row.isCash ? '—' : row.positions}</TableCell>
+      <TableCell className="text-right tabular-nums">
+        {row.isCash ? (
+          '—'
+        ) : onPositionsClick && !isTotal && row.positions > 0 ? (
+          <button
+            type="button"
+            className="font-medium text-sky-700 underline decoration-sky-700/30 underline-offset-4 hover:decoration-sky-700 dark:text-sky-400 dark:decoration-sky-400/30 dark:hover:decoration-sky-400"
+            onClick={() => onPositionsClick(row)}
+            title="Show these positions on Holdings"
+          >
+            {row.positions}
+          </button>
+        ) : (
+          row.positions
+        )}
+      </TableCell>
       <TableCell className={cn('text-right tabular-nums', weight)}>{formatWhole(row.costBasis, currency)}</TableCell>
       <TableCell className="text-right tabular-nums">
         {dayPercent !== null ? (
@@ -97,7 +116,7 @@ function SummaryCells({
 }
 
 /** One summary row per account or label, with a total row. */
-export function AnalysisTable({ title, description, groupHeading, unnamedLabel, summary, currency, showShare = true, showCash = false, nameWidth = 'w-48' }: AnalysisTableProps) {
+export function AnalysisTable({ title, description, groupHeading, unnamedLabel, summary, currency, showShare = true, showCash = false, nameWidth = 'w-48', onPositionsClick }: AnalysisTableProps) {
   return (
     <Card className="gap-0 py-0">
       <CardHeader className="gap-0 border-b pt-5 [.border-b]:pb-5">
@@ -133,7 +152,7 @@ export function AnalysisTable({ title, description, groupHeading, unnamedLabel, 
                     <span className="text-muted-foreground">{unnamedLabel}</span>
                   )}
                 </TableCell>
-                <SummaryCells row={row} currency={currency} showShare={showShare} showCash={showCash} />
+                <SummaryCells row={row} currency={currency} showShare={showShare} showCash={showCash} onPositionsClick={onPositionsClick} />
               </TableRow>
             ))}
           </TableBody>

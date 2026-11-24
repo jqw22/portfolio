@@ -39,8 +39,6 @@ interface WatchlistTableProps {
   onDeleteLabel: (label: string) => void;
   sort: HoldingSort;
   onSortChange: (sort: HoldingSort) => void;
-  /** When prices were last fetched (ms since epoch), or 0. */
-  lastRefreshAt: number;
 }
 
 function displayName(item: WatchItem): string {
@@ -207,7 +205,6 @@ export function WatchlistTable({
   onDeleteLabel,
   sort,
   onSortChange,
-  lastRefreshAt,
 }: WatchlistTableProps) {
   const [symbol, setSymbol] = useState('');
   const [name, setName] = useState('');
@@ -384,19 +381,6 @@ export function WatchlistTable({
             </TableBody>
           </Table>
         )}
-        {rows.length > 0 ? (
-          <p className="border-t px-6 py-3 text-xs text-muted-foreground">
-            {lastRefreshAt > 0
-              ? `Prices fetched ${new Date(lastRefreshAt).toLocaleString('en-GB', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}. Press Refresh to update them.`
-              : 'No prices fetched yet. Press Refresh to fetch them.'}
-          </p>
-        ) : null}
       </CardContent>
     </Card>
   );
